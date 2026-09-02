@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
-import { computeTotals } from "@/lib/calculations";
+import { computeEstimateTotals } from "@/lib/calculations";
 import { pagination, clientLabel, formatCurrency, formatDate, vehicleLabel } from "@/lib/utils";
 import { ESTIMATE_STATUSES, STATUS_COLORS, labelOf } from "@/lib/constants";
 import { Card, PageHeader, Pagination, EmptyState } from "@/components/ui";
@@ -85,12 +85,7 @@ export default async function EstimatesPage({
               </thead>
               <tbody>
                 {items.map((est) => {
-                  const totals = computeTotals(
-                    est.lineItems,
-                    est.discountType,
-                    est.discountValue,
-                    est.taxRate,
-                  );
+                  const totals = computeEstimateTotals(est);
                   return (
                     <tr key={est.id}>
                       <td>

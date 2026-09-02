@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Button } from "@/components/ui";
+import { Button, Field, Input, Textarea } from "@/components/ui";
 import { ESTIMATE_STATUSES, labelOf } from "@/lib/constants";
 
 export function WriteOnly({
@@ -166,19 +166,47 @@ export function InvoiceButton({ id }: { id: string }) {
   );
 }
 
-export function EmailEstimate({ id, defaultTo }: { id: string; defaultTo?: string | null }) {
+export function EmailEstimate({
+  id,
+  defaultTo,
+  estimateNumber,
+  companyName = "DMK Services",
+}: {
+  id: string;
+  defaultTo?: string | null;
+  estimateNumber: string;
+  companyName?: string;
+}) {
+  const defaultSubject = `Devis ${estimateNumber} — ${companyName}`;
+  const defaultMessage = `Bonjour,\n\nVeuillez trouver ci-joint le devis ${estimateNumber}.\n\nCordialement,\n${companyName}`;
   const [open, setOpen] = useState(false);
   const [to, setTo] = useState(defaultTo ?? "");
+  const [cc, setCc] = useState("");
+  const [subject, setSubject] = useState(defaultSubject);
+  const [message, setMessage] = useState(defaultMessage);
   const [msg, setMsg] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
   const router = useRouter();
 
+  function openModal() {
+    setTo(defaultTo ?? "");
+    setCc("");
+    setSubject(defaultSubject);
+    setMessage(defaultMessage);
+    setMsg(null);
+    setOpen(true);
+  }
+
   async function send() {
+    setSending(true);
+    setMsg(null);
     const res = await fetch(`/api/estimates/${id}/email`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ to }),
+      body: JSON.stringify({ to, cc, subject, message }),
     });
     const data = await res.json();
+    setSending(false);
     if (!res.ok) setMsg(data.error);
     else {
       setOpen(false);
@@ -188,18 +216,47 @@ export function EmailEstimate({ id, defaultTo }: { id: string; defaultTo?: strin
 
   return (
     <>
-      <Button type="button" variant="ghost" onClick={() => setOpen(true)}>
+      <Button type="button" variant="ghost" onClick={openModal}>
         Envoyer par email
       </Button>
       {open ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="card w-full max-w-md space-y-3 p-5">
+          <div className="card w-full max-w-lg space-y-3 p-5">
             <h3 className="font-semibold text-navy">Envoyer le devis</h3>
-            <input className="input" value={to} onChange={(e) => setTo(e.target.value)} placeholder="destinataire@email.fr" />
+            <Field label="A">
+              <Input
+                type="email"
+                value={to}
+                onChange={(e) => setTo(e.target.value)}
+                placeholder="destinataire@email.fr"
+                required
+              />
+            </Field>
+            <Field label="CC" hint="Optionnel, plusieurs adresses séparées par une virgule">
+              <Input
+                value={cc}
+                onChange={(e) => setCc(e.target.value)}
+                placeholder="copie@email.fr"
+              />
+            </Field>
+            <Field label="Objet">
+              <Input value={subject} onChange={(e) => setSubject(e.target.value)} />
+            </Field>
+            <Field label="Message">
+              <Textarea rows={7} value={message} onChange={(e) => setMessage(e.target.value)} />
+            </Field>
+            <a
+              href={`/api/estimates/${id}/pdf`}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex text-sm font-medium text-amber-600 hover:underline"
+            >
+              Aperçu du devis à envoyer (PDF)
+            </a>
             {msg ? <p className="text-sm text-red-600">{msg}</p> : null}
             <div className="flex gap-2">
-              <Button type="button" onClick={send}>
-                Envoyer
+              <Button type="button" onClick={send} disabled={sending || !to.trim()}>
+                {sending ? "Envoi…" : "Envoyer"}
               </Button>
               <Button type="button" variant="ghost" onClick={() => setOpen(false)}>
                 Annuler

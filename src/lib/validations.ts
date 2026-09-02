@@ -20,6 +20,7 @@ export const clientSchema = z.object({
   taxId: z.string().optional().nullable(),
   notes: z.string().optional().nullable(),
   status: z.enum(["ACTIVE", "INACTIVE"]).default("ACTIVE"),
+  discountPercent: z.coerce.number().min(0).max(100).optional().default(0),
 });
 
 export const vehicleSchema = z.object({
@@ -49,9 +50,17 @@ export const lineItemSchema = z.object({
   severity: z.enum(["LIGHT", "MEDIUM", "HEAVY"]),
   dentCount: z.number().int().min(0).default(0),
   laborHours: z.number().min(0).default(0),
-  laborRate: z.number().min(0),
+  laborRate: z.number().min(0).default(0),
+  laborRateId: z.string().optional().nullable(),
+  pricingMode: z.enum(["HOURLY", "FIXED"]).optional().default("HOURLY"),
+  fixedAmount: z.number().min(0).optional().default(0),
   partsCost: z.number().min(0).default(0),
   paintCost: z.number().min(0).default(0),
+});
+
+const serviceQuoteSchema = z.object({
+  mode: z.enum(["HOURLY", "FIXED"]).optional().default("HOURLY"),
+  amount: z.number().min(0).optional().default(0),
 });
 
 export const estimateSchema = z.object({
@@ -61,12 +70,21 @@ export const estimateSchema = z.object({
   vehicleId: z.string().min(1, "Véhicule requis"),
   estimatorId: z.string().optional(),
   status: z.enum(["DRAFT", "SENT", "APPROVED", "REJECTED", "INVOICED"]).optional(),
-  discountType: z.enum(["PERCENT", "FIXED"]),
-  discountValue: z.number().min(0).default(0),
+  discountType: z.enum(["PERCENT", "FIXED"]).optional().default("PERCENT"),
+  discountValue: z.number().min(0).optional().default(0),
   taxRate: z.number().min(0).default(20),
   internalNotes: z.string().optional().nullable(),
   clientNotes: z.string().optional().nullable(),
   includePhotos: z.boolean().optional(),
+  dismantlingAmount: z.number().min(0).optional().default(0),
+  servicePricing: z
+    .object({
+      PDR: serviceQuoteSchema.optional(),
+      CONVENTIONAL: serviceQuoteSchema.optional(),
+      PANEL_REPLACEMENT: serviceQuoteSchema.optional(),
+    })
+    .optional()
+    .nullable(),
   lineItems: z.array(lineItemSchema).min(1, "Ajoutez au moins une ligne"),
 });
 
@@ -97,6 +115,8 @@ export const settingsSchema = z.object({
   defaultTaxRate: z.number().min(0),
   estimatePrefix: z.string().min(1),
   estimateSeqPad: z.number().int().min(3).max(8),
+  carDiagram: z.enum(["assembled", "exploded"]).optional(),
+  carDiagramMaps: z.record(z.string(), z.record(z.string(), z.string())).optional().nullable(),
   termsAndConditions: z.string().optional().nullable(),
   smtpHost: z.string().optional().nullable(),
   smtpPort: z.number().int().optional().nullable(),

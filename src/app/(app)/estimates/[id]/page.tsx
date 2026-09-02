@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { computeTotals } from "@/lib/calculations";
+import { computeEstimateTotals, isMethodFixed } from "@/lib/calculations";
 import { clientLabel, formatCurrency, formatDate, formatDateTime, fullName, vehicleLabel } from "@/lib/utils";
 import {
   DAMAGE_TYPES,
@@ -12,6 +12,7 @@ import {
   labelOf,
 } from "@/lib/constants";
 import { Card, PageHeader } from "@/components/ui";
+import { EstimateTotalsPanels } from "@/components/EstimateTotalsPanels";
 import { DeleteButton, DuplicateEstimateButton, EmailEstimate, StatusActions, WriteOnly } from "@/components/Actions";
 import { canWrite, getSession } from "@/lib/auth";
 
@@ -19,23 +20,21 @@ export default async function EstimateDetailPage({ params }: { params: Promise<{
   const { id } = await params;
   const session = await getSession();
   const writable = session ? canWrite(session.role) : false;
-  const estimate = await prisma.estimate.findUnique({
-    where: { id },
-    include: {
-      client: true,
-      vehicle: true,
-      estimator: true,
-      lineItems: { orderBy: { sortOrder: "asc" } },
-      statusLogs: { orderBy: { createdAt: "desc" }, include: { user: true } },
-    },
-  });
+  const [settings, estimate] = await Promise.all([
+    prisma.companySettings.findUnique({ where: { id: "default" }, select: { name: true } }),
+    prisma.estimate.findUnique({
+      where: { id },
+      include: {
+        client: true,
+        vehicle: true,
+        estimator: true,
+        lineItems: { orderBy: { sortOrder: "asc" } },
+        statusLogs: { orderBy: { createdAt: "desc" }, include: { user: true } },
+      },
+    }),
+  ]);
   if (!estimate) notFound();
-  const totals = computeTotals(
-    estimate.lineItems,
-    estimate.discountType,
-    estimate.discountValue,
-    estimate.taxRate,
-  );
+  const totals = computeEstimateTotals(estimate);
 
   return (
     <div>
@@ -57,7 +56,12 @@ export default async function EstimateDetailPage({ params }: { params: Promise<{
               <Link href={`/estimates/${id}/edit`} className="btn btn-primary">
                 Modifier
               </Link>
-              <EmailEstimate id={id} defaultTo={estimate.client.email} />
+              <EmailEstimate
+                id={id}
+                defaultTo={estimate.client.email}
+                estimateNumber={estimate.number}
+                companyName={settings?.name || "DMK Services"}
+              />
               <DuplicateEstimateButton id={id} />
               <DeleteButton url={`/api/estimates/${id}`} redirectTo="/estimates" />
             </WriteOnly>
@@ -119,28 +123,17 @@ export default async function EstimateDetailPage({ params }: { params: Promise<{
                 <td>{formatCurrency(line.laborRate)}</td>
                 <td>{formatCurrency(line.partsCost)}</td>
                 <td>{formatCurrency(line.paintCost)}</td>
-                <td className="font-medium">{formatCurrency(line.lineTotal)}</td>
+                <td className="font-medium">
+                  {isMethodFixed(estimate.servicePricing, line.repairMethod)
+                    ? "—"
+                    : formatCurrency(line.lineTotal)}
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
-        <div className="ml-auto max-w-sm space-y-1 p-5 text-sm">
-          <div className="flex justify-between">
-            <span>Sous-total</span>
-            <span>{formatCurrency(totals.subtotal)}</span>
-          </div>
-          <div className="flex justify-between">
-            <span>Remise</span>
-            <span>-{formatCurrency(totals.discount)}</span>
-          </div>
-          <div className="flex justify-between">
-            <span>TVA {estimate.taxRate} %</span>
-            <span>{formatCurrency(totals.tax)}</span>
-          </div>
-          <div className="flex justify-between border-t border-line pt-2 text-base font-semibold">
-            <span>Total TTC</span>
-            <span>{formatCurrency(totals.grandTotal)}</span>
-          </div>
+        <div className="border-t border-line p-5">
+          <EstimateTotalsPanels totals={totals} taxRate={estimate.taxRate} />
         </div>
       </Card>
 

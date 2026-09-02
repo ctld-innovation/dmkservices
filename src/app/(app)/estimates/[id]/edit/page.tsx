@@ -3,11 +3,15 @@ import { prisma } from "@/lib/prisma";
 import { requireWriter } from "@/lib/auth";
 import { PageHeader } from "@/components/ui";
 import { EstimateForm } from "@/components/EstimateForm";
+import { resolveDiagramPanelMap } from "@/lib/diagram";
+import { resolveCarDiagram } from "@/lib/constants";
+import { ensureLaborRates } from "@/lib/laborRates";
 
 export default async function EditEstimatePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const session = await requireWriter();
-  const [estimate, clients, vehicles, panels, settings] = await Promise.all([
+  await ensureLaborRates();
+  const [estimate, clients, vehicles, panels, settings, laborRates] = await Promise.all([
     prisma.estimate.findUnique({
       where: { id },
       include: { lineItems: { orderBy: { sortOrder: "asc" } } },
@@ -16,6 +20,7 @@ export default async function EditEstimatePage({ params }: { params: Promise<{ i
     prisma.vehicle.findMany({ include: { clients: true } }),
     prisma.lookupValue.findMany({ where: { category: "PANEL", active: true }, orderBy: { sortOrder: "asc" } }),
     prisma.companySettings.findUnique({ where: { id: "default" } }),
+    prisma.laborRate.findMany({ orderBy: [{ sortOrder: "asc" }, { label: "asc" }] }),
   ]);
   if (!estimate) notFound();
 
@@ -28,8 +33,15 @@ export default async function EditEstimatePage({ params }: { params: Promise<{ i
         vehicles={vehicles}
         panels={panels.map((p) => p.label)}
         laborRate={settings?.defaultLaborRate ?? 75}
+        laborRates={laborRates}
         taxRate={settings?.defaultTaxRate ?? 20}
         estimatorId={session!.id}
+        diagramStyle={resolveCarDiagram(settings?.carDiagram)}
+        panelMap={resolveDiagramPanelMap(
+          settings?.carDiagramMaps,
+          resolveCarDiagram(settings?.carDiagram),
+          panels,
+        )}
         initial={{
           date: estimate.date,
           damageDate: estimate.damageDate,
@@ -42,6 +54,8 @@ export default async function EditEstimatePage({ params }: { params: Promise<{ i
           internalNotes: estimate.internalNotes,
           clientNotes: estimate.clientNotes,
           includePhotos: estimate.includePhotos,
+          dismantlingAmount: estimate.dismantlingAmount,
+          servicePricing: estimate.servicePricing,
           lineItems: estimate.lineItems,
         }}
       />

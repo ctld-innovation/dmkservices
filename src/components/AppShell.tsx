@@ -51,6 +51,7 @@ export function AppShell({
       <aside
         className={cn(
           "fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-line bg-white text-navy transition-transform lg:translate-x-0",
+          "no-print",
           open ? "translate-x-0" : "-translate-x-full",
         )}
       >
@@ -105,21 +106,21 @@ export function AppShell({
 
       {open ? (
         <button
-          className="fixed inset-0 z-30 bg-black/40 lg:hidden"
+          className="no-print fixed inset-0 z-30 bg-black/40 lg:hidden"
           onClick={() => setOpen(false)}
           aria-label="Fermer le menu"
         />
       ) : null}
 
-      <div className="lg:pl-64">
-        <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-line bg-white/90 px-4 py-3 backdrop-blur lg:hidden">
+      <div className="lg:pl-64 print:pl-0">
+        <header className="no-print sticky top-0 z-20 flex items-center gap-3 border-b border-line bg-white/90 px-4 py-3 backdrop-blur lg:hidden">
           <button className="btn btn-ghost" onClick={() => setOpen(true)}>
             <Menu size={18} />
           </button>
           <BrandLogo compact className="h-8 w-8" />
           <span className="font-semibold text-navy">{t.appName}</span>
         </header>
-        <main className="p-4 sm:p-6 lg:p-8">{children}</main>
+        <main className="p-4 sm:p-6 lg:p-8 print:p-0">{children}</main>
       </div>
     </div>
   );

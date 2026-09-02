@@ -2,19 +2,28 @@
 
 import { useState } from "react";
 import { cn } from "@/lib/utils";
+import type { CarDiagram } from "@/lib/constants";
+import { panelZoneId, EXPLODED_PANEL_SHAPES, EXPLODED_VIEW } from "@/lib/diagram";
 
 type PanelShape = {
+  id: string;
   label: string;
   d: string;
   badge: { x: number; y: number };
 };
+
+type PanelDraft = Omit<PanelShape, "id">;
+
+function withZoneIds(panels: PanelDraft[]): PanelShape[] {
+  return panels.map((panel) => ({ ...panel, id: panelZoneId(panel.label) }));
+}
 
 /**
  * Vue de dessus d'une berline (avant en haut).
  * Les panneaux s'emboîtent pour former une silhouette de voiture.
  * Les labels doivent matcher DEFAULT_PANELS.
  */
-const PANELS: PanelShape[] = [
+const ASSEMBLED_PANELS: PanelDraft[] = [
   {
     label: "Pare-chocs avant",
     d: "M 86 10 C 116 3 144 3 174 10 L 186 28 L 74 28 Z",
@@ -122,6 +131,62 @@ const PANELS: PanelShape[] = [
   },
 ];
 
+/**
+ * Éclaté du schéma fourni (vue de dessus, côtés dépliés, sans pare-chocs).
+ */
+const EXPLODED_PANELS: PanelDraft[] = EXPLODED_PANEL_SHAPES;
+
+type Layout = {
+  viewBox: string;
+  panels: PanelShape[];
+  wheels: Array<{ cx: number; cy: number }>;
+  glass: string[];
+  labels?: { avant: { x: number; y: number }; arriere: { x: number; y: number } };
+  extras?: "assembled";
+  image?: string;
+  badgeRadius?: number;
+  badgeFont?: number;
+};
+
+function AssembledExtras() {
+  return (
+    <>
+      <ellipse cx="34" cy="164" rx="7" ry="4.5" className="pointer-events-none fill-white stroke-navy/40" />
+      <ellipse cx="226" cy="164" rx="7" ry="4.5" className="pointer-events-none fill-white stroke-navy/40" />
+      <ellipse cx="92" cy="18" rx="7" ry="3.5" className="pointer-events-none fill-amber/55" />
+      <ellipse cx="168" cy="18" rx="7" ry="3.5" className="pointer-events-none fill-amber/55" />
+      <path d="M 130 36 L 130 110" className="pointer-events-none stroke-navy/15" strokeWidth="1" />
+      <rect x="96" y="416" width="13" height="5" rx="2" className="pointer-events-none fill-red-400/80" />
+      <rect x="151" y="416" width="13" height="5" rx="2" className="pointer-events-none fill-red-400/80" />
+    </>
+  );
+}
+
+const LAYOUTS: Record<CarDiagram, Layout> = {
+  assembled: {
+    viewBox: "0 0 260 452",
+    panels: withZoneIds(ASSEMBLED_PANELS),
+    wheels: [
+      { cx: 48, cy: 118 },
+      { cx: 212, cy: 118 },
+      { cx: 48, cy: 388 },
+      { cx: 212, cy: 388 },
+    ],
+    glass: ["M 88 116 L 172 116 L 160 154 L 100 154 Z", "M 94 288 L 166 288 L 168 340 L 92 340 Z"],
+    labels: { avant: { x: 130, y: 8 }, arriere: { x: 130, y: 448 } },
+    extras: "assembled",
+  },
+  exploded: {
+    viewBox: "0 0 1024 622",
+    panels: withZoneIds(EXPLODED_PANELS),
+    wheels: [],
+    glass: [],
+    image: EXPLODED_VIEW.image,
+    badgeRadius: 22,
+    badgeFont: 18,
+  },
+};
+
 function Wheel({ cx, cy }: { cx: number; cy: number }) {
   return (
     <g className="pointer-events-none">
@@ -132,136 +197,270 @@ function Wheel({ cx, cy }: { cx: number; cy: number }) {
   );
 }
 
+export function CarDiagramSvg({
+  variant,
+  selected,
+  dentCounts,
+  interactive = true,
+  hovered,
+  onHover,
+  onToggle,
+  panelMap,
+  activeZoneId,
+  onSelectZone,
+  cropContent = false,
+}: {
+  variant: CarDiagram;
+  selected: string[];
+  dentCounts: Record<string, number>;
+  interactive?: boolean;
+  hovered?: string | null;
+  onHover?: (label: string | null) => void;
+  onToggle?: (panel: string) => void;
+  panelMap?: Record<string, string>;
+  activeZoneId?: string | null;
+  onSelectZone?: (zoneId: string) => void;
+  cropContent?: boolean;
+}) {
+  const layout = LAYOUTS[variant] ?? LAYOUTS.exploded;
+  const [localHover, setLocalHover] = useState<string | null>(null);
+  const selectedSet = new Set(selected);
+  const mapping = onSelectZone != null;
+  const pieceOf = (panel: PanelShape) => panelMap?.[panel.id] ?? panel.label;
+  const badgeR = layout.badgeRadius ?? 7.5;
+  const badgeFont = layout.badgeFont ?? 8;
+  const activeHover = hovered ?? localHover;
+  const viewBox =
+    cropContent && variant === "exploded"
+      ? `${EXPLODED_VIEW.content.x} ${EXPLODED_VIEW.content.y} ${EXPLODED_VIEW.content.width} ${EXPLODED_VIEW.content.height}`
+      : layout.viewBox;
+
+  const badges = mapping
+    ? []
+    : layout.panels.flatMap((panel) => {
+        const piece = pieceOf(panel);
+        const isOn = selectedSet.has(piece);
+        const dents = dentCounts[piece] ?? 0;
+        if (!isOn || dents <= 0) return [];
+        return [{ ...panel, dents }];
+      });
+
+  return (
+    <svg
+      viewBox={viewBox}
+      className="mx-auto h-auto w-full select-none"
+      role="img"
+      aria-label={
+        variant === "exploded"
+          ? "Éclaté de carrosserie, panneaux écartés"
+          : "Vue de dessus d'une voiture, panneaux cliquables"
+      }
+    >
+      {layout.image ? (
+        <image href={layout.image} width="1024" height="622" className="pointer-events-none" />
+      ) : null}
+      {layout.wheels.map((w) => (
+        <Wheel key={`${w.cx}-${w.cy}`} cx={w.cx} cy={w.cy} />
+      ))}
+      {layout.glass.map((d) => (
+        <path
+          key={d}
+          d={d}
+          className="pointer-events-none fill-[#b8eaf5] stroke-navy/20"
+          strokeWidth="1"
+        />
+      ))}
+      {layout.panels.map((panel) => {
+        const piece = pieceOf(panel);
+        const isOn = mapping ? activeZoneId === panel.id : selectedSet.has(piece);
+        const isHover = activeHover === piece || activeHover === panel.id;
+        const activate = () => {
+          if (mapping) onSelectZone?.(panel.id);
+          else onToggle?.(piece);
+        };
+        const setHover = (value: string | null) => {
+          setLocalHover(value);
+          onHover?.(value);
+        };
+        return (
+          <g
+            key={panel.id}
+            role={interactive ? "button" : undefined}
+            tabIndex={interactive ? 0 : undefined}
+            aria-pressed={interactive ? isOn : undefined}
+            aria-label={piece}
+            className="outline-none"
+            onMouseEnter={interactive ? () => setHover(mapping ? panel.id : piece) : undefined}
+            onMouseLeave={interactive ? () => setHover(null) : undefined}
+            onClick={interactive ? activate : undefined}
+            onKeyDown={
+              interactive
+                ? (e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      activate();
+                    }
+                  }
+                : undefined
+            }
+          >
+            <title>{piece}</title>
+            <path
+              d={panel.d}
+              className={cn(
+                "transition duration-150",
+                layout.image
+                  ? isOn
+                    ? "fill-amber/60 stroke-navy"
+                    : isHover
+                      ? "fill-amber/25 stroke-amber"
+                      : "fill-transparent stroke-transparent"
+                  : isOn
+                    ? "fill-amber stroke-navy"
+                    : isHover
+                      ? "fill-white stroke-amber"
+                      : "fill-white stroke-navy/50",
+                layout.image ? "stroke-2" : "stroke-[1.15]",
+              )}
+              style={{
+                cursor: interactive ? "pointer" : "default",
+                filter: isOn ? "drop-shadow(0 0 4px rgb(0 217 245 / 50%))" : undefined,
+              }}
+            />
+          </g>
+        );
+      })}
+      {badges.map((panel) => (
+        <g key={`badge-${panel.id}`} className="pointer-events-none">
+          <circle cx={panel.badge.x} cy={panel.badge.y} r={badgeR} className="fill-navy" />
+          <text
+            x={panel.badge.x}
+            y={panel.badge.y + badgeFont * 0.38}
+            textAnchor="middle"
+            className="fill-white"
+            style={{ fontSize: badgeFont, fontWeight: 700 }}
+          >
+            {panel.dents}
+          </text>
+        </g>
+      ))}
+      {activeHover
+        ? (() => {
+            const panel = layout.panels.find((p) => p.id === activeHover || pieceOf(p) === activeHover);
+            if (!panel) return null;
+            const name = pieceOf(panel);
+            const font = Math.max(badgeFont, 14);
+            const padX = font * 0.55;
+            const width = Math.max(name.length * font * 0.62 + padX * 2, 48);
+            const height = font * 1.75;
+            const x = panel.badge.x;
+            const y = panel.badge.y - badgeR - 6;
+            return (
+              <g className="pointer-events-none" transform={`translate(${x} ${y})`}>
+                <rect
+                  x={-width / 2}
+                  y={-height}
+                  width={width}
+                  height={height}
+                  rx={font * 0.35}
+                  className="fill-navy"
+                />
+                <text
+                  y={-height / 2 + font * 0.38}
+                  textAnchor="middle"
+                  className="fill-white"
+                  style={{ fontSize: font, fontWeight: 700 }}
+                >
+                  {name}
+                </text>
+              </g>
+            );
+          })()
+        : null}
+      {layout.labels ? (
+        <>
+          <text
+            x={layout.labels.avant.x}
+            y={layout.labels.avant.y}
+            textAnchor="middle"
+            className="pointer-events-none fill-navy/40"
+            style={{ fontSize: 7, fontWeight: 700 }}
+          >
+            AVANT
+          </text>
+          <text
+            x={layout.labels.arriere.x}
+            y={layout.labels.arriere.y}
+            textAnchor="middle"
+            className="pointer-events-none fill-navy/40"
+            style={{ fontSize: 7, fontWeight: 700 }}
+          >
+            ARRIÈRE
+          </text>
+        </>
+      ) : null}
+    </svg>
+  );
+}
+
+export function CarDiagramPreview({ variant }: { variant: CarDiagram }) {
+  return (
+    <div className="rounded-xl border border-line bg-gradient-to-b from-white to-mist px-1 py-1">
+      <CarDiagramSvg variant={variant} selected={[]} dentCounts={{}} interactive={false} />
+    </div>
+  );
+}
+
 export function CarPanelPicker({
   selected,
   dentCounts,
   onToggle,
+  variant = "exploded",
+  panelMap,
+  compact,
 }: {
   selected: string[];
   dentCounts: Record<string, number>;
   onToggle: (panel: string) => void;
+  variant?: CarDiagram;
+  panelMap?: Record<string, string>;
+  compact?: boolean;
 }) {
   const [hovered, setHovered] = useState<string | null>(null);
-  const selectedSet = new Set(selected);
+  const diagram: CarDiagram = variant === "exploded" ? "exploded" : "assembled";
+  const totalDents = Object.values(dentCounts).reduce((sum, n) => sum + n, 0);
 
   return (
-    <div className="card p-4">
+    <div className={compact ? "" : "card p-4"}>
       <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
         <div>
-          <h2 className="font-semibold text-navy">Éclaté véhicule</h2>
+          <h2 className="font-semibold text-navy">
+            {diagram === "exploded" ? "Éclaté véhicule" : "Silhouette véhicule"}
+          </h2>
           <p className="text-xs text-slate-500">Cliquez les panneaux bosselés — recliquer pour retirer.</p>
         </div>
         <div className="text-xs font-medium text-navy">
           {selected.length} panneau{selected.length > 1 ? "x" : ""}
+          {totalDents ? ` · ${totalDents} bosse${totalDents > 1 ? "s" : ""}` : ""}
         </div>
       </div>
 
       <div className="flex flex-col items-center gap-3 sm:flex-row sm:items-start sm:justify-center sm:gap-8">
-        <div className="w-full max-w-[200px] shrink-0 rounded-xl border border-line bg-gradient-to-b from-white to-mist px-1 py-1">
-          <svg
-            viewBox="0 0 260 452"
-            className="mx-auto h-auto w-full select-none"
-            role="img"
-            aria-label="Vue de dessus d'une voiture, panneaux cliquables"
-          >
-            <title>Carrosserie vue de dessus</title>
-            <Wheel cx={48} cy={118} />
-            <Wheel cx={212} cy={118} />
-            <Wheel cx={48} cy={388} />
-            <Wheel cx={212} cy={388} />
-
-            <path
-              d="M 88 116 L 172 116 L 160 154 L 100 154 Z"
-              className="pointer-events-none fill-[#b8eaf5] stroke-navy/20"
-              strokeWidth="1"
-            />
-            <path
-              d="M 94 288 L 166 288 L 168 340 L 92 340 Z"
-              className="pointer-events-none fill-[#b8eaf5] stroke-navy/20"
-              strokeWidth="1"
-            />
-
-            {PANELS.map((panel) => {
-              const isOn = selectedSet.has(panel.label);
-              const isHover = hovered === panel.label;
-              const dents = dentCounts[panel.label] ?? 0;
-              return (
-                <g
-                  key={panel.label}
-                  role="button"
-                  tabIndex={0}
-                  aria-pressed={isOn}
-                  aria-label={panel.label}
-                  className="outline-none"
-                  onMouseEnter={() => setHovered(panel.label)}
-                  onMouseLeave={() => setHovered((h) => (h === panel.label ? null : h))}
-                  onClick={() => onToggle(panel.label)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      onToggle(panel.label);
-                    }
-                  }}
-                >
-                  <path
-                    d={panel.d}
-                    className={cn(
-                      "stroke-[1.15] transition duration-150",
-                      isOn
-                        ? "fill-amber stroke-navy"
-                        : isHover
-                          ? "fill-white stroke-amber"
-                          : "fill-white stroke-navy/50",
-                    )}
-                    style={{
-                      cursor: "pointer",
-                      filter: isOn ? "drop-shadow(0 0 4px rgb(0 217 245 / 50%))" : undefined,
-                    }}
-                  />
-                  {isOn && dents > 0 ? (
-                    <g className="pointer-events-none">
-                      <circle cx={panel.badge.x} cy={panel.badge.y} r="7.5" className="fill-navy" />
-                      <text
-                        x={panel.badge.x}
-                        y={panel.badge.y + 3}
-                        textAnchor="middle"
-                        className="fill-white"
-                        style={{ fontSize: 8, fontWeight: 700 }}
-                      >
-                        {dents}
-                      </text>
-                    </g>
-                  ) : null}
-                </g>
-              );
-            })}
-
-            <ellipse cx="34" cy="164" rx="7" ry="4.5" className="pointer-events-none fill-white stroke-navy/40" />
-            <ellipse cx="226" cy="164" rx="7" ry="4.5" className="pointer-events-none fill-white stroke-navy/40" />
-            <ellipse cx="92" cy="18" rx="7" ry="3.5" className="pointer-events-none fill-amber/55" />
-            <ellipse cx="168" cy="18" rx="7" ry="3.5" className="pointer-events-none fill-amber/55" />
-            <path d="M 130 36 L 130 110" className="pointer-events-none stroke-navy/15" strokeWidth="1" />
-            <rect x="96" y="416" width="13" height="5" rx="2" className="pointer-events-none fill-red-400/80" />
-            <rect x="151" y="416" width="13" height="5" rx="2" className="pointer-events-none fill-red-400/80" />
-            <text
-              x="130"
-              y="8"
-              textAnchor="middle"
-              className="pointer-events-none fill-navy/40"
-              style={{ fontSize: 7, fontWeight: 700 }}
-            >
-              AVANT
-            </text>
-            <text
-              x="130"
-              y="448"
-              textAnchor="middle"
-              className="pointer-events-none fill-navy/40"
-              style={{ fontSize: 7, fontWeight: 700 }}
-            >
-              ARRIÈRE
-            </text>
-          </svg>
+        <div
+          className={cn(
+            "w-full shrink-0 rounded-xl border border-line bg-gradient-to-b from-white to-mist px-1 py-1",
+            diagram === "exploded" ? "max-w-[460px]" : "max-w-[200px]",
+          )}
+        >
+          <CarDiagramSvg
+            variant={diagram}
+            selected={selected}
+            dentCounts={dentCounts}
+            panelMap={panelMap}
+            hovered={hovered}
+            onHover={setHovered}
+            onToggle={onToggle}
+          />
         </div>
 
         <div className="min-w-0 flex-1 text-sm">

@@ -12,9 +12,17 @@ export function VehicleForm({
   clients,
   initial,
   id,
+  lockToClientId,
+  redirectTo,
+  onCancel,
+  compact,
 }: {
   clients: VehicleFormClient[];
   id?: string;
+  lockToClientId?: string;
+  redirectTo?: string;
+  onCancel?: () => void;
+  compact?: boolean;
   initial?: {
     licensePlate?: string;
     vin?: string;
@@ -33,9 +41,10 @@ export function VehicleForm({
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [vin, setVin] = useState(initial?.vin ?? "");
-  const [selected, setSelected] = useState<string[]>(initial?.links?.map((l) => l.clientId) ?? []);
+  const presetLinks = initial?.links ?? (lockToClientId ? [{ clientId: lockToClientId, role: "OWNER" }] : []);
+  const [selected, setSelected] = useState<string[]>(presetLinks.map((l) => l.clientId));
   const [roles, setRoles] = useState<Record<string, string>>(
-    Object.fromEntries((initial?.links ?? []).map((l) => [l.clientId, l.role])),
+    Object.fromEntries(presetLinks.map((l) => [l.clientId, l.role])),
   );
 
   const vinOk = !vin || isValidVin(vin);
@@ -79,11 +88,14 @@ export function VehicleForm({
       setError(data.error || "Enregistrement impossible");
       return;
     }
-    router.push(`/vehicles/${data.id}`);
+    router.push(redirectTo || `/vehicles/${data.id}`);
     router.refresh();
   }
 
   function toggleClient(clientId: string) {
+    if (lockToClientId && clientId === lockToClientId && selected.includes(clientId)) {
+      return;
+    }
     setSelected((prev) =>
       prev.includes(clientId) ? prev.filter((id) => id !== clientId) : [...prev, clientId],
     );
@@ -91,7 +103,7 @@ export function VehicleForm({
   }
 
   return (
-    <form onSubmit={onSubmit} className="card space-y-5 p-6">
+    <form onSubmit={onSubmit} className={compact ? "space-y-5" : "card space-y-5 p-6"}>
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Immatriculation">
           <Input name="licensePlate" required defaultValue={initial?.licensePlate ?? ""} className="uppercase" />
@@ -149,7 +161,12 @@ export function VehicleForm({
             return (
               <div key={c.id} className="flex flex-wrap items-center gap-3">
                 <label className="flex flex-1 items-center gap-2 text-sm">
-                  <input type="checkbox" checked={checked} onChange={() => toggleClient(c.id)} />
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    disabled={lockToClientId === c.id}
+                    onChange={() => toggleClient(c.id)}
+                  />
                   {c.companyName ? `${c.companyName} — ` : ""}
                   {c.firstName} {c.lastName}
                 </label>
@@ -176,7 +193,7 @@ export function VehicleForm({
         <Button type="submit" disabled={loading}>
           {loading ? "Enregistrement…" : "Enregistrer"}
         </Button>
-        <Button type="button" variant="ghost" onClick={() => router.back()}>
+        <Button type="button" variant="ghost" onClick={() => (onCancel ? onCancel() : router.back())}>
           Annuler
         </Button>
       </div>

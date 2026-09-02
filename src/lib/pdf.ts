@@ -3,9 +3,15 @@ import autoTable from "jspdf-autotable";
 import fs from "fs";
 import path from "path";
 import type { Estimate, EstimateLineItem, Client, Vehicle, User, CompanySettings, VehiclePhoto } from "@prisma/client";
-import { computeTotals } from "./calculations";
+import { computeEstimateTotals, isMethodFixed, serviceTotalRows } from "./calculations";
 import { formatDate, clientLabel, fullName } from "./utils";
 import { DAMAGE_TYPES, REPAIR_METHODS, SEVERITIES, labelOf } from "./constants";
+import {
+  EXPLODED_PANEL_SHAPES,
+  EXPLODED_VIEW,
+  panelZoneId,
+  resolveDiagramPanelMap,
+} from "./diagram";
 
 /** Helvetica (WinAnsi) ignore NBSP / espaces fins : les montants se décalent ou disparaissent. */
 function formatPdfCurrency(value: number) {
@@ -27,42 +33,166 @@ type EstimatePdf = Estimate & {
   lineItems: EstimateLineItem[];
 };
 
-function loadImage(filePath: string | null | undefined): { data: string; ext: string } | null {
+function publicFile(filePath: string | null | undefined) {
   if (!filePath) return null;
   const abs = path.join(process.cwd(), "public", filePath.replace(/^\//, ""));
-  if (!fs.existsSync(abs)) return null;
-  const buf = fs.readFileSync(abs);
-  const ext = path.extname(abs).toLowerCase().replace(".", "");
-  const mime = ext === "jpg" ? "jpeg" : ext;
-  if (!["png", "jpeg", "webp"].includes(mime === "jpg" ? "jpeg" : mime)) {
-    if (ext === "svg") return null;
+  return fs.existsSync(abs) ? abs : null;
+}
+
+type JpegImage = { data: Uint8Array; width: number; height: number };
+
+async function loadJpeg(
+  filePath: string | null | undefined,
+  maxEdge: number,
+  quality: number,
+  crop?: { left: number; top: number; width: number; height: number },
+): Promise<JpegImage | null> {
+  const abs = publicFile(filePath);
+  if (!abs) return null;
+  try {
+    const sharp = (await import("sharp")).default;
+    let pipeline = sharp(abs).rotate();
+    if (crop) pipeline = pipeline.extract(crop);
+    const { data, info } = await pipeline
+      .resize({ width: maxEdge, height: maxEdge, fit: "inside", withoutEnlargement: true })
+      .flatten({ background: "#ffffff" })
+      .jpeg({ quality, mozjpeg: true, chromaSubsampling: "4:2:0" })
+      .toBuffer({ resolveWithObject: true });
+    return { data: new Uint8Array(data), width: info.width ?? 1, height: info.height ?? 1 };
+  } catch {
+    return null;
   }
-  return { data: `data:image/${mime};base64,${buf.toString("base64")}`, ext: mime === "jpg" ? "JPEG" : mime.toUpperCase() };
+}
+
+function fitBox(imgW: number, imgH: number, maxW: number, maxH: number) {
+  const ratio = imgW / Math.max(imgH, 1);
+  let w = maxW;
+  let h = w / ratio;
+  if (h > maxH) {
+    h = maxH;
+    w = h * ratio;
+  }
+  return { w, h };
+}
+
+function addJpeg(
+  doc: jsPDF,
+  image: JpegImage,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  alias: string,
+) {
+  doc.addImage(image.data, "JPEG", x, y, w, h, alias, "NONE");
+}
+
+function svgPathToPoints(d: string) {
+  return d
+    .replace(/Z/gi, "")
+    .split(/[ML]/i)
+    .map((chunk) => chunk.trim())
+    .filter(Boolean)
+    .map((chunk) => {
+      const [x, y] = chunk.split(/[\s,]+/).map(Number);
+      return { x, y };
+    })
+    .filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y));
+}
+
+function fillPolygon(
+  doc: jsPDF,
+  points: Array<{ x: number; y: number }>,
+  originX: number,
+  originY: number,
+  scale: number,
+  style: "F" | "S" | "FD" = "F",
+) {
+  if (points.length < 3) return;
+  const lines = points.slice(1).map((point, i) => [
+    (point.x - points[i].x) * scale,
+    (point.y - points[i].y) * scale,
+  ]);
+  doc.lines(lines, originX + points[0].x * scale, originY + points[0].y * scale, [1, 1], style, true);
+}
+
+function drawExplodedDiagram(
+  doc: jsPDF,
+  x: number,
+  y: number,
+  width: number,
+  jpeg: JpegImage | null,
+  selected: string[],
+  dentCounts: Record<string, number>,
+  panelMap: Record<string, string>,
+) {
+  const box = EXPLODED_VIEW.content;
+  const height = (width * box.height) / box.width;
+  const scale = width / box.width;
+  if (jpeg) {
+    addJpeg(doc, jpeg, x, y, width, height, "exploded-view");
+  }
+  const selectedSet = new Set(selected);
+  for (const panel of EXPLODED_PANEL_SHAPES) {
+    const piece = panelMap[panelZoneId(panel.label)] ?? panel.label;
+    if (!selectedSet.has(piece)) continue;
+    const points = svgPathToPoints(panel.d).map((point) => ({
+      x: point.x - box.x,
+      y: point.y - box.y,
+    }));
+    doc.setFillColor(0, 217, 245);
+    doc.setDrawColor(10, 61, 72);
+    doc.setLineWidth(0.25);
+    fillPolygon(doc, points, x, y, scale, "FD");
+    const dents = dentCounts[piece] ?? 0;
+    if (dents > 0) {
+      const cx = x + (panel.badge.x - box.x) * scale;
+      const cy = y + (panel.badge.y - box.y) * scale;
+      doc.setFillColor(10, 61, 72);
+      doc.circle(cx, cy, Math.max(2.8, width * 0.016), "F");
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(7);
+      doc.setTextColor(255, 255, 255);
+      doc.text(String(dents), cx, cy + 0.9, { align: "center" });
+    }
+  }
+  return height;
 }
 
 export async function buildEstimatePdf(
   estimate: EstimatePdf,
   settings: CompanySettings,
   photos: VehiclePhoto[] = [],
+  lookups: Array<{ id: string; label: string }> = [],
 ) {
-  const doc = new jsPDF({ unit: "mm", format: "a4" });
+  const doc = new jsPDF({ unit: "mm", format: "a4", compress: true });
   const pageW = doc.internal.pageSize.getWidth();
   const margin = 16;
   let y = 16;
 
-  const logo = loadImage(settings.logoPath) ?? loadImage("/branding/logo.png");
-  if (logo) {
+  const [logo, explodedJpeg] = await Promise.all([
+    loadJpeg(settings.logoPath, 360, 72).then((img) => img ?? loadJpeg("/branding/logo.png", 360, 72)),
+    loadJpeg(EXPLODED_VIEW.image, 1100, 68, {
+      left: EXPLODED_VIEW.content.x,
+      top: EXPLODED_VIEW.content.y,
+      width: EXPLODED_VIEW.content.width,
+      height: EXPLODED_VIEW.content.height,
+    }),
+  ]);
+  const logoBox = logo ? fitBox(logo.width, logo.height, 48, 18) : null;
+  if (logo && logoBox) {
     try {
-      doc.addImage(logo.data, logo.ext, margin, y, 26, 26);
+      addJpeg(doc, logo, margin, y, logoBox.w, logoBox.h, "company-logo");
     } catch {
       /* ignore invalid logo */
     }
   }
+  const headerX = logoBox ? margin + logoBox.w + 4 : margin;
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(16);
   doc.setTextColor(12, 25, 41);
-  doc.text(settings.name || "DMK Services", logo ? margin + 30 : margin, y + 8);
+  doc.text(settings.name || "DMK Services", headerX, y + 6);
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9);
@@ -74,7 +204,7 @@ export async function buildEstimatePdf(
     [settings.phone, settings.email].filter(Boolean).join(" · "),
     settings.taxId ? `TVA : ${settings.taxId}` : "",
   ].filter(Boolean);
-  companyLines.forEach((line, i) => doc.text(line, logo ? margin + 30 : margin, y + 14 + i * 4));
+  companyLines.forEach((line, i) => doc.text(line, headerX, y + 12 + i * 4));
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(18);
@@ -128,11 +258,11 @@ export async function buildEstimatePdf(
       labelOf(REPAIR_METHODS, line.repairMethod),
       labelOf(SEVERITIES, line.severity),
       String(line.dentCount || ""),
-      line.laborHours.toFixed(1),
+      Number(line.laborHours).toFixed(1),
       formatPdfCurrency(line.laborRate),
       formatPdfCurrency(line.partsCost),
       formatPdfCurrency(line.paintCost),
-      formatPdfCurrency(line.lineTotal),
+      isMethodFixed(estimate.servicePricing, line.repairMethod) ? "—" : formatPdfCurrency(line.lineTotal),
     ]);
 
   autoTable(doc, {
@@ -169,57 +299,107 @@ export async function buildEstimatePdf(
     },
   });
 
-  const totals = computeTotals(
-    estimate.lineItems,
-    estimate.discountType,
-    estimate.discountValue,
-    estimate.taxRate,
-  );
+  const pageBottom = 284;
+  let ty = lastTableY(doc, y) + 6;
 
-  const totalsW = 78;
-  const totalsX = pageW - margin - totalsW;
-  let ty = lastTableY(doc, y) + 8;
-  if (ty > 250) {
-    doc.addPage();
-    ty = 20;
-  }
-
-  const discountLabel =
-    estimate.discountType === "PERCENT"
-      ? `Remise (${Number(estimate.discountValue) || 0} %)`
-      : "Remise";
-
-  const totalRows: Array<[string, string, boolean?]> = [
+  const totals = computeEstimateTotals(estimate);
+  const gap = 4;
+  const innerW = pageW - margin * 2;
+  const boxW = (innerW - gap) / 2;
+  const leftX = margin;
+  const rightX = margin + boxW + gap;
+  const rowH = 7;
+  const titleH = 7;
+  const repairRows = serviceTotalRows(totals, true).map((row): [string, string, boolean?] => [
+    row.label,
+    formatPdfCurrency(row.value),
+  ]);
+  const priceRows: Array<[string, string, boolean?]> = [
     ["Sous-total", formatPdfCurrency(totals.subtotal)],
-    [discountLabel, formatPdfCurrency(-Math.abs(totals.discount))],
     [`TVA (${Number(estimate.taxRate) || 0} %)`, formatPdfCurrency(totals.tax)],
     ["Total TTC", formatPdfCurrency(totals.grandTotal), true],
   ];
+  const boxH = titleH + Math.max(repairRows.length, priceRows.length) * rowH + 4;
+  if (ty + boxH > pageBottom) {
+    doc.addPage();
+    ty = 18;
+  }
 
-  const rowH = 7.2;
-  const boxH = rowH * totalRows.length + 3;
-  doc.setFillColor(244, 252, 254);
-  doc.setDrawColor(200, 238, 245);
-  doc.setLineWidth(0.3);
-  doc.roundedRect(totalsX, ty - 2, totalsW, boxH, 1.5, 1.5, "FD");
-
-  totalRows.forEach(([label, value, strong], i) => {
-    const rowY = ty + i * rowH;
-    if (strong) {
-      doc.setFillColor(0, 217, 245);
-      doc.roundedRect(totalsX + 0.6, rowY - 1.2, totalsW - 1.2, rowH, 1, 1, "F");
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(10);
-    } else {
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(9);
-    }
+  function drawTotalsBox(
+    x: number,
+    title: string,
+    rows: Array<[string, string, boolean?]>,
+  ) {
+    doc.setFillColor(244, 252, 254);
+    doc.setDrawColor(200, 238, 245);
+    doc.setLineWidth(0.3);
+    doc.roundedRect(x, ty - 2, boxW, boxH, 1.5, 1.5, "FD");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
     doc.setTextColor(10, 61, 72);
-    doc.text(label, totalsX + 3.5, rowY + 4);
-    doc.text(value, totalsX + totalsW - 3.5, rowY + 4, { align: "right" });
-  });
+    doc.text(title, x + 3.5, ty + 3);
+    rows.forEach(([label, value, strong], i) => {
+      const rowY = ty + titleH + i * rowH;
+      if (strong) {
+        doc.setFillColor(0, 217, 245);
+        doc.roundedRect(x + 0.6, rowY - 1.4, boxW - 1.2, rowH, 1, 1, "F");
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(9);
+      } else {
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(8);
+      }
+      doc.setTextColor(10, 61, 72);
+      doc.text(label, x + 3.5, rowY + 3.6);
+      doc.text(value, x + boxW - 3.5, rowY + 3.6, { align: "right" });
+    });
+  }
 
-  let notesY = ty + boxH + 8;
+  drawTotalsBox(leftX, "Total réparation", repairRows);
+  drawTotalsBox(rightX, "Prix total", priceRows);
+
+  const dentCounts: Record<string, number> = {};
+  for (const line of estimate.lineItems) {
+    if (!line.panel) continue;
+    dentCounts[line.panel] = (dentCounts[line.panel] ?? 0) + (Number(line.dentCount) || 0);
+  }
+  const selectedPanels = [
+    ...new Set(
+      estimate.lineItems
+        .map((line) => line.panel)
+        .filter((panel): panel is string => Boolean(panel)),
+    ),
+  ];
+  const panelMap = resolveDiagramPanelMap(settings.carDiagramMaps, "exploded", lookups);
+  const fullW = pageW - margin * 2;
+  const diagramW = fullW * 0.7;
+  const diagramX = margin + (fullW - diagramW) / 2;
+  const diagramH = (diagramW * EXPLODED_VIEW.content.height) / EXPLODED_VIEW.content.width;
+  let diagramY = ty + boxH + 4;
+  if (diagramY + 5 + diagramH > pageBottom) {
+    doc.addPage();
+    diagramY = 16;
+  }
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10);
+  doc.setTextColor(12, 25, 41);
+  doc.text("Éclaté des dommages", pageW / 2, diagramY, { align: "center" });
+  const usedH = drawExplodedDiagram(
+    doc,
+    diagramX,
+    diagramY + 2,
+    diagramW,
+    explodedJpeg,
+    selectedPanels,
+    dentCounts,
+    panelMap,
+  );
+
+  let notesY = diagramY + 2 + usedH + 6;
+  if (notesY > pageBottom - 24) {
+    doc.addPage();
+    notesY = 18;
+  }
   if (estimate.clientNotes) {
     doc.setTextColor(12, 25, 41);
     doc.setFont("helvetica", "bold");
@@ -246,14 +426,20 @@ export async function buildEstimatePdf(
     notesY += 6 + split.length * 3.2;
   }
 
-  notesY += 10;
+  const signH = 16;
+  notesY += 8;
+  if (notesY + signH > pageBottom) {
+    doc.addPage();
+    notesY = 18;
+  }
   doc.setDrawColor(180, 190, 200);
-  doc.rect(margin, notesY, 70, 28);
-  doc.setFontSize(8);
+  doc.setLineWidth(0.3);
+  doc.rect(margin, notesY, 70, signH);
+  doc.setFontSize(7.5);
   doc.setTextColor(120, 130, 140);
-  doc.text("Signature client", margin + 3, notesY + 5);
-  doc.rect(pageW - margin - 70, notesY, 70, 28);
-  doc.text("Cachet / signature DMK", pageW - margin - 67, notesY + 5);
+  doc.text("Signature client", margin + 3, notesY + 4);
+  doc.rect(pageW - margin - 70, notesY, 70, signH);
+  doc.text("Cachet / signature DMK", pageW - margin - 67, notesY + 4);
 
   if (estimate.includePhotos && photos.length) {
     doc.addPage();
@@ -266,7 +452,7 @@ export async function buildEstimatePdf(
     const imgW = 86;
     const imgH = 58;
     for (const photo of photos) {
-      const img = loadImage(photo.path);
+      const img = await loadJpeg(photo.path, 420, 48);
       if (!img) continue;
       if (py + imgH > 280) {
         doc.addPage();
@@ -274,7 +460,7 @@ export async function buildEstimatePdf(
         py = 20;
       }
       try {
-        doc.addImage(img.data, img.ext, px, py, imgW, imgH);
+        addJpeg(doc, img, px, py, imgW, imgH, `photo-${photo.id}`);
         doc.setFontSize(8);
         doc.setTextColor(90, 100, 110);
         doc.text(photo.caption || photo.filename, px, py + imgH + 4);

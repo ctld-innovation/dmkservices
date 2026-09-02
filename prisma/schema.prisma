@@ -98,6 +98,7 @@ model Client {
   taxId       String?
   notes       String?      @db.Text
   status      ClientStatus @default(ACTIVE)
+  discountPercent Float    @default(0)
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
   createdById String?
@@ -174,6 +175,8 @@ model Estimate {
   internalNotes String?        @db.Text
   clientNotes   String?        @db.Text
   includePhotos Boolean        @default(false)
+  servicePricing Json?
+  dismantlingAmount Float      @default(0)
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
 
@@ -198,6 +201,9 @@ model EstimateLineItem {
   dentCount    Int          @default(0)
   laborHours   Float        @default(0)
   laborRate    Float
+  laborRateId  String?
+  pricingMode  String       @default("HOURLY")
+  fixedAmount  Float        @default(0)
   partsCost    Float        @default(0)
   paintCost    Float        @default(0)
   lineTotal    Float        @default(0)
@@ -235,6 +241,8 @@ model CompanySettings {
   estimateSeqPad     Int     @default(4)
   lastEstimateYear   Int     @default(2026)
   lastEstimateSeq    Int     @default(0)
+  carDiagram         String  @default("exploded")
+  carDiagramMaps     Json?
   termsAndConditions String? @db.Text
   smtpHost           String?
   smtpPort           Int?
@@ -250,6 +258,17 @@ model LookupValue {
   value     String
   sortOrder Int     @default(0)
   active    Boolean @default(true)
+}
+
+model LaborRate {
+  id        String  @id @default(cuid())
+  label     String
+  amount    Float
+  isDefault Boolean @default(false)
+  sortOrder Int     @default(0)
+  active    Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model AuditLog {

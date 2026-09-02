@@ -24,24 +24,38 @@ export async function POST(
     },
   });
   if (!estimate) return jsonError("Devis introuvable", 404);
-  const to = body.to || estimate.client.email;
+  const to = String(body.to || estimate.client.email || "").trim();
   if (!to) return jsonError("Aucune adresse email destinataire");
+  const cc = String(body.cc || "")
+    .split(/[,;]/)
+    .map((addr: string) => addr.trim())
+    .filter(Boolean)
+    .join(", ");
 
-  const settings = await prisma.companySettings.upsert({
-    where: { id: "default" },
-    update: {},
-    create: { id: "default", name: "DMK Services" },
-  });
+  const [settings, photos, lookups] = await Promise.all([
+    prisma.companySettings.upsert({
+      where: { id: "default" },
+      update: {},
+      create: { id: "default", name: "DMK Services" },
+    }),
+    estimate.includePhotos
+      ? prisma.vehiclePhoto.findMany({ where: { vehicleId: estimate.vehicleId } })
+      : Promise.resolve([]),
+    prisma.lookupValue.findMany({ where: { category: "PANEL", active: true } }),
+  ]);
   if (!settings.smtpHost || !settings.smtpUser) {
     return jsonError(
       "SMTP non configuré. Renseignez l'hôte et l'utilisateur dans Paramètres.",
     );
   }
 
-  const photos = estimate.includePhotos
-    ? await prisma.vehiclePhoto.findMany({ where: { vehicleId: estimate.vehicleId } })
-    : [];
-  const pdf = await buildEstimatePdf(estimate, settings, photos);
+  const subject =
+    String(body.subject || "").trim() || `Devis ${estimate.number} — ${settings.name}`;
+  const text =
+    String(body.message || "").trim() ||
+    `Bonjour,\n\nVeuillez trouver ci-joint le devis ${estimate.number}.\n\nCordialement,\n${settings.name}`;
+
+  const pdf = await buildEstimatePdf(estimate, settings, photos, lookups);
   const transporter = nodemailer.createTransport({
     host: settings.smtpHost,
     port: settings.smtpPort || 587,
@@ -52,10 +66,9 @@ export async function POST(
   await transporter.sendMail({
     from: settings.smtpFrom || settings.smtpUser,
     to,
-    subject: body.subject || `Devis ${estimate.number} — ${settings.name}`,
-    text:
-      body.message ||
-      `Bonjour,\n\nVeuillez trouver ci-joint le devis ${estimate.number}.\n\nCordialement,\n${settings.name}`,
+    cc: cc || undefined,
+    subject,
+    text,
     attachments: [{ filename: `${estimate.number}.pdf`, content: pdf }],
   });
 
@@ -69,13 +82,13 @@ export async function POST(
             fromStatus: "DRAFT",
             toStatus: "SENT",
             userId: session.id,
-            note: `Envoyé par email à ${to}`,
+            note: `Envoyé par email à ${to}${cc ? ` (cc ${cc})` : ""}`,
           },
         },
       },
     });
   }
 
-  await writeAudit(session, "Estimate", id, "EMAIL", { to });
+  await writeAudit(session, "Estimate", id, "EMAIL", { to, cc: cc || undefined, subject });
   return NextResponse.json({ ok: true });
 }

@@ -1,0 +1,268 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  ESTIMATOR
+  VIEWER
+}
+
+enum ClientType {
+  WORKSHOP
+  INTERMEDIARY
+  INSURANCE
+  FINAL_CLIENT
+}
+
+enum ClientStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum FuelType {
+  PETROL
+  DIESEL
+  ELECTRIC
+  HYBRID
+}
+
+enum EstimateStatus {
+  DRAFT
+  SENT
+  APPROVED
+  REJECTED
+  INVOICED
+}
+
+enum DamageType {
+  DENT
+  SCRATCH
+  CRACK
+  PAINT_DAMAGE
+}
+
+enum RepairMethod {
+  PDR
+  CONVENTIONAL
+  PANEL_REPLACEMENT
+}
+
+enum Severity {
+  LIGHT
+  MEDIUM
+  HEAVY
+}
+
+enum DiscountType {
+  PERCENT
+  FIXED
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  firstName    String
+  lastName     String
+  role         Role     @default(ESTIMATOR)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  estimates     Estimate[]
+  statusChanges EstimateStatusLog[]
+  auditLogs     AuditLog[]
+  createdClients Client[] @relation("ClientCreatedBy")
+  updatedClients Client[] @relation("ClientUpdatedBy")
+}
+
+model Client {
+  id          String       @id @default(cuid())
+  type        ClientType
+  companyName String?
+  firstName   String
+  lastName    String
+  email       String?
+  phone       String?
+  mobile      String?
+  street      String?
+  city        String?
+  postalCode  String?
+  country     String?      @default("France")
+  taxId       String?
+  notes       String?      @db.Text
+  status      ClientStatus @default(ACTIVE)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  createdById String?
+  updatedById String?
+
+  createdBy    User?           @relation("ClientCreatedBy", fields: [createdById], references: [id])
+  updatedBy    User?           @relation("ClientUpdatedBy", fields: [updatedById], references: [id])
+  vehicleLinks ClientVehicle[]
+  estimates    Estimate[]
+
+  @@index([type])
+  @@index([status])
+  @@index([lastName])
+}
+
+model Vehicle {
+  id                String    @id @default(cuid())
+  licensePlate      String
+  vin               String
+  brand             String
+  model             String
+  year              Int?
+  firstRegistration DateTime?
+  color             String?
+  mileage           Int?
+  fuelType          FuelType?
+  notes             String?    @db.Text
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  clients   ClientVehicle[]
+  photos    VehiclePhoto[]
+  estimates Estimate[]
+
+  @@index([licensePlate])
+  @@index([vin])
+}
+
+model ClientVehicle {
+  id        String  @id @default(cuid())
+  clientId  String
+  vehicleId String
+  role      String  @default("OWNER")
+
+  client  Client  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, vehicleId])
+}
+
+model VehiclePhoto {
+  id        String   @id @default(cuid())
+  vehicleId String
+  filename  String
+  path      String
+  caption   String?
+  createdAt DateTime @default(now())
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+}
+
+model Estimate {
+  id            String         @id @default(cuid())
+  number        String         @unique
+  date          DateTime       @default(now())
+  damageDate    DateTime?
+  clientId      String
+  vehicleId     String
+  estimatorId   String
+  status        EstimateStatus @default(DRAFT)
+  discountType  DiscountType   @default(PERCENT)
+  discountValue Float          @default(0)
+  taxRate       Float          @default(20)
+  internalNotes String?        @db.Text
+  clientNotes   String?        @db.Text
+  includePhotos Boolean        @default(false)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  client     Client              @relation(fields: [clientId], references: [id])
+  vehicle    Vehicle             @relation(fields: [vehicleId], references: [id])
+  estimator  User                @relation(fields: [estimatorId], references: [id])
+  lineItems  EstimateLineItem[]
+  statusLogs EstimateStatusLog[]
+
+  @@index([status])
+  @@index([date])
+}
+
+model EstimateLineItem {
+  id           String       @id @default(cuid())
+  estimateId   String
+  sortOrder    Int
+  panel        String
+  damageType   DamageType
+  repairMethod RepairMethod
+  severity     Severity
+  dentCount    Int          @default(0)
+  laborHours   Float        @default(0)
+  laborRate    Float
+  partsCost    Float        @default(0)
+  paintCost    Float        @default(0)
+  lineTotal    Float        @default(0)
+
+  estimate Estimate @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+}
+
+model EstimateStatusLog {
+  id         String          @id @default(cuid())
+  estimateId String
+  fromStatus EstimateStatus?
+  toStatus   EstimateStatus
+  userId     String
+  note       String?
+  createdAt  DateTime        @default(now())
+
+  estimate Estimate @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id])
+}
+
+model CompanySettings {
+  id                 String  @id @default("default")
+  name               String  @default("DMK Services")
+  logoPath           String?
+  street             String?
+  city               String?
+  postalCode         String?
+  country            String? @default("France")
+  phone              String?
+  email              String?
+  taxId              String?
+  defaultLaborRate   Float   @default(75)
+  defaultTaxRate     Float   @default(20)
+  estimatePrefix     String  @default("EST")
+  estimateSeqPad     Int     @default(4)
+  lastEstimateYear   Int     @default(2026)
+  lastEstimateSeq    Int     @default(0)
+  termsAndConditions String? @db.Text
+  smtpHost           String?
+  smtpPort           Int?
+  smtpUser           String?
+  smtpPass           String?
+  smtpFrom           String?
+}
+
+model LookupValue {
+  id        String  @id @default(cuid())
+  category  String
+  label     String
+  value     String
+  sortOrder Int     @default(0)
+  active    Boolean @default(true)
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  entity    String
+  entityId  String
+  action    String
+  userId    String?
+  details   String?  @db.Text
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([entity, entityId])
+  @@index([createdAt])
+}

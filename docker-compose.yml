@@ -1,0 +1,17 @@
+services:
+  db:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: dmk
+      MYSQL_DATABASE: dmkservices
+      MYSQL_USER: dmk
+      MYSQL_PASSWORD: dmk
+    ports:
+      - "3306:3306"
+    volumes:
+      - dmk_mysql:/var/lib/mysql
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+
+volumes:
+  dmk_mysql:

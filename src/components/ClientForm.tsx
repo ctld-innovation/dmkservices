@@ -20,6 +20,7 @@ export type ClientFormValues = {
   taxId?: string | null;
   notes?: string | null;
   status?: string;
+  discountPercent?: number | null;
 };
 
 export function ClientForm({
@@ -39,7 +40,10 @@ export function ClientForm({
     setLoading(true);
     setError(null);
     const form = new FormData(e.currentTarget);
-    const payload = Object.fromEntries(form.entries());
+    const payload = {
+      ...Object.fromEntries(form.entries()),
+      discountPercent: Number(form.get("discountPercent") || 0),
+    };
     const res = await fetch(id ? `/api/clients/${id}` : "/api/clients", {
       method: id ? "PATCH" : "POST",
       headers: { "Content-Type": "application/json" },
@@ -112,6 +116,19 @@ export function ClientForm({
         </Field>
         <Field label="Ville">
           <Input name="city" defaultValue={initial?.city ?? ""} />
+        </Field>
+        <Field
+          label="Remise horaire par défaut (%)"
+          hint="Appliquée sur les taux horaires des devis, pas sur les montants forfaitaires."
+        >
+          <Input
+            name="discountPercent"
+            type="number"
+            min={0}
+            max={100}
+            step="0.5"
+            defaultValue={initial?.discountPercent ?? 0}
+          />
         </Field>
       </div>
       <Field label="Notes internes">

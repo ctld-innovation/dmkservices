@@ -5,7 +5,7 @@ import { canWrite, getSession, unauthorized, forbidden, jsonError } from "@/lib/
 import { estimateSchema } from "@/lib/validations";
 import { writeAudit } from "@/lib/audit";
 import { pagination } from "@/lib/utils";
-import { computeLineTotal } from "@/lib/calculations";
+import { computeLineTotal, isMethodFixed, parseServicePricing } from "@/lib/calculations";
 import { nextEstimateNumber } from "@/lib/numbering";
 
 export async function GET(req: NextRequest) {
@@ -61,20 +61,25 @@ export async function POST(req: Request) {
       vehicleId: data.vehicleId,
       estimatorId: data.estimatorId || session.id,
       status: data.status ?? "DRAFT",
-      discountType: data.discountType,
-      discountValue: data.discountValue,
+      discountType: "PERCENT",
+      discountValue: 0,
       taxRate: data.taxRate,
       internalNotes: data.internalNotes,
       clientNotes: data.clientNotes,
       includePhotos: data.includePhotos ?? false,
+      dismantlingAmount: data.dismantlingAmount ?? 0,
+      servicePricing: parseServicePricing(data.servicePricing),
       lineItems: {
         create: data.lineItems.map((line, idx) => {
           const { id: _lineId, ...rest } = line;
           void _lineId;
+          const methodFixed = isMethodFixed(data.servicePricing, rest.repairMethod);
           return {
             ...rest,
+            pricingMode: "HOURLY",
+            fixedAmount: 0,
             sortOrder: rest.sortOrder ?? idx,
-            lineTotal: computeLineTotal(rest),
+            lineTotal: computeLineTotal(rest, methodFixed),
           };
         }),
       },

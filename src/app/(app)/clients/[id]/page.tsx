@@ -6,20 +6,28 @@ import { CLIENT_TYPES, CLIENT_STATUSES, ESTIMATE_STATUSES, STATUS_COLORS, VEHICL
 import { Card, PageHeader } from "@/components/ui";
 import { DeleteButton, WriteOnly } from "@/components/Actions";
 import { canWrite, getSession } from "@/lib/auth";
+import { ClientVehiclesCard } from "@/components/AddClientVehicle";
 
 export default async function ClientDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const session = await getSession();
   const writable = session ? canWrite(session.role) : false;
-  const client = await prisma.client.findUnique({
-    where: { id },
-    include: {
-      vehicleLinks: { include: { vehicle: true } },
-      estimates: { orderBy: { date: "desc" }, include: { vehicle: true } },
-      createdBy: true,
-      updatedBy: true,
-    },
-  });
+  const [client, allClients] = await Promise.all([
+    prisma.client.findUnique({
+      where: { id },
+      include: {
+        vehicleLinks: { include: { vehicle: true } },
+        estimates: { orderBy: { date: "desc" }, include: { vehicle: true } },
+        createdBy: true,
+        updatedBy: true,
+      },
+    }),
+    prisma.client.findMany({
+      where: { status: "ACTIVE" },
+      orderBy: { lastName: "asc" },
+      select: { id: true, companyName: true, firstName: true, lastName: true },
+    }),
+  ]);
   if (!client) notFound();
 
   return (
@@ -29,7 +37,10 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
         subtitle={labelOf(CLIENT_TYPES, client.type)}
         actions={
           <WriteOnly canWrite={writable}>
-            <Link href={`/clients/${id}/edit`} className="btn btn-primary">
+            <Link href={`/estimates/new?clientId=${id}`} className="btn btn-primary">
+              Nouveau devis
+            </Link>
+            <Link href={`/clients/${id}/edit`} className="btn btn-ghost">
               Modifier
             </Link>
             <DeleteButton url={`/api/clients/${id}`} redirectTo="/clients" />
@@ -51,6 +62,10 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
           </p>
           {client.taxId ? <p>TVA : {client.taxId}</p> : null}
           <p>
+            Remise horaire :{" "}
+            <span className="font-medium text-navy">{Number(client.discountPercent) || 0} %</span>
+          </p>
+          <p>
             <span className={`badge ${STATUS_COLORS[client.status]}`}>
               {labelOf(CLIENT_STATUSES, client.status)}
             </span>
@@ -63,8 +78,23 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
             Modifié le {formatDateTime(client.updatedAt)}
           </p>
         </Card>
-        <Card className="lg:col-span-2">
-          <h2 className="border-b border-line px-5 py-4 font-semibold text-navy">Véhicules liés</h2>
+        <ClientVehiclesCard
+          clientId={id}
+          clients={
+            allClients.some((c) => c.id === id)
+              ? allClients
+              : [
+                  {
+                    id: client.id,
+                    companyName: client.companyName,
+                    firstName: client.firstName,
+                    lastName: client.lastName,
+                  },
+                  ...allClients,
+                ]
+          }
+          canWrite={writable}
+        >
           {client.vehicleLinks.length === 0 ? (
             <p className="p-5 text-sm text-slate-500">Aucun véhicule</p>
           ) : (
@@ -74,6 +104,7 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
                   <th>Véhicule</th>
                   <th>VIN</th>
                   <th>Rôle</th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody>
@@ -86,15 +117,32 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
                     </td>
                     <td className="font-mono text-xs">{link.vehicle.vin}</td>
                     <td>{labelOf(VEHICLE_LINK_ROLES, link.role)}</td>
+                    <td>
+                      <WriteOnly canWrite={writable}>
+                        <Link
+                          href={`/estimates/new?clientId=${id}&vehicleId=${link.vehicle.id}`}
+                          className="text-sm font-medium text-navy hover:underline"
+                        >
+                          Devis
+                        </Link>
+                      </WriteOnly>
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           )}
-        </Card>
+        </ClientVehiclesCard>
       </div>
       <Card className="mt-4">
-        <h2 className="border-b border-line px-5 py-4 font-semibold text-navy">Devis</h2>
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-5 py-4">
+          <h2 className="font-semibold text-navy">Devis</h2>
+          <WriteOnly canWrite={writable}>
+            <Link href={`/estimates/new?clientId=${id}`} className="btn btn-ghost">
+              Créer un devis
+            </Link>
+          </WriteOnly>
+        </div>
         {client.estimates.length === 0 ? (
           <p className="p-5 text-sm text-slate-500">Aucun devis</p>
         ) : (

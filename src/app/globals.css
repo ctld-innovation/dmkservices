@@ -191,9 +191,88 @@ body {
   background: #f7fdff;
 }
 
+.line-table {
+  font-size: 0.8125rem;
+}
+
+.line-table th,
+.line-table td {
+  padding: 0.35rem 0.35rem;
+}
+
+.line-table th {
+  white-space: nowrap;
+}
+
+.table-select {
+  appearance: none;
+  width: 100%;
+  min-width: 0;
+  min-height: 2rem;
+  padding: 0.28rem 1.35rem 0.28rem 0.45rem;
+  border: 1px solid #7ec9d6;
+  border-radius: 8px;
+  background-color: #f4fcfe;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%230a3d48' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.4rem center;
+  background-size: 12px;
+  color: var(--color-navy);
+  font-size: 0.75rem;
+  font-weight: 650;
+  line-height: 1.2;
+}
+
+.table-select:focus {
+  border-color: var(--color-amber);
+  background-color: #fff;
+  box-shadow: 0 0 0 3px rgb(0 217 245 / 28%);
+  outline: none;
+}
+
+.table-num {
+  width: 3.5rem;
+  min-width: 3.5rem;
+  padding: 0.28rem 0.3rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  font-size: 0.75rem;
+}
+
+.table-num-lg {
+  width: 4.25rem;
+  min-width: 4.25rem;
+}
+
+.line-table tbody tr.is-dragging {
+  opacity: 0.45;
+}
+
+.line-table tbody tr.drop-target td {
+  box-shadow: inset 0 2px 0 var(--color-amber);
+}
+
+.drag-handle {
+  display: flex;
+  width: 1.25rem;
+  height: 2rem;
+  align-items: center;
+  justify-content: center;
+  color: #7aa3ad;
+  cursor: grab;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+  color: var(--color-navy);
+}
+
 .print-sheet {
   background: white;
   color: #111;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
 }
 
 @media print {
@@ -206,5 +285,6 @@ body {
   .print-sheet {
     box-shadow: none;
     margin: 0;
+    max-width: none;
   }
 }

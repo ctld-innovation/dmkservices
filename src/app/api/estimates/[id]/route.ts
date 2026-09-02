@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { canWrite, getSession, unauthorized, forbidden, jsonError } from "@/lib/auth";
 import { estimateSchema } from "@/lib/validations";
 import { writeAudit } from "@/lib/audit";
-import { computeLineTotal } from "@/lib/calculations";
+import { computeLineTotal, isMethodFixed, parseServicePricing } from "@/lib/calculations";
 
 export async function GET(
   _req: Request,
@@ -51,20 +51,25 @@ export async function PATCH(
         clientId: data.clientId,
         vehicleId: data.vehicleId,
         estimatorId: data.estimatorId || existing.estimatorId,
-        discountType: data.discountType,
-        discountValue: data.discountValue,
+        discountType: "PERCENT",
+        discountValue: 0,
         taxRate: data.taxRate,
         internalNotes: data.internalNotes,
         clientNotes: data.clientNotes,
         includePhotos: data.includePhotos ?? false,
+        dismantlingAmount: data.dismantlingAmount ?? 0,
+        servicePricing: parseServicePricing(data.servicePricing),
         lineItems: {
           create: data.lineItems.map((line, idx) => {
             const { id: _lineId, ...rest } = line;
             void _lineId;
+            const methodFixed = isMethodFixed(data.servicePricing, rest.repairMethod);
             return {
               ...rest,
+              pricingMode: "HOURLY",
+              fixedAmount: 0,
               sortOrder: rest.sortOrder ?? idx,
-              lineTotal: computeLineTotal(rest),
+              lineTotal: computeLineTotal(rest, methodFixed),
             };
           }),
         },

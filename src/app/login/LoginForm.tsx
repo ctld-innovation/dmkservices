@@ -56,19 +56,15 @@ export default function LoginForm({ locale }: { locale: Locale }) {
         </div>
         <div className="space-y-4 p-8">
           <Field label={t.login.email}>
-            <Input name="email" type="email" required defaultValue="admin@dmkservices.fr" autoComplete="username" />
+            <Input name="email" type="email" required autoComplete="username" />
           </Field>
           <Field label={t.login.password}>
-            <Input name="password" type="password" required defaultValue="Admin1234!" autoComplete="current-password" />
+            <Input name="password" type="password" required autoComplete="current-password" />
           </Field>
           <ErrorText message={error} />
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? t.login.loading : t.login.submit}
           </Button>
-          <p className="text-xs leading-5 text-slate-500">
-            Comptes de démo : admin@dmkservices.fr / Admin1234! · estimator@dmkservices.fr /
-            Estimator1234! · viewer@dmkservices.fr / Viewer1234!
-          </p>
         </div>
       </form>
     </div>

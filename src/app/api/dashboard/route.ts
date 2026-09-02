@@ -1,15 +1,37 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession, unauthorized } from "@/lib/auth";
-import { computeTotals } from "@/lib/calculations";
+import { computeEstimateTotals, sumEstimatesByStatus } from "@/lib/calculations";
+import { ESTIMATE_STATUSES } from "@/lib/constants";
 
 export async function GET() {
   const session = await getSession();
   if (!session) return unauthorized();
 
-  const [clients, estimates, recent] = await Promise.all([
+  const [clients, allEstimates, recent] = await Promise.all([
     prisma.client.groupBy({ by: ["type"], _count: { _all: true } }),
-    prisma.estimate.groupBy({ by: ["status"], _count: { _all: true } }),
+    prisma.estimate.findMany({
+      select: {
+        status: true,
+        discountType: true,
+        discountValue: true,
+        taxRate: true,
+        servicePricing: true,
+        dismantlingAmount: true,
+        lineItems: {
+          select: {
+            laborHours: true,
+            laborRate: true,
+            partsCost: true,
+            paintCost: true,
+            lineTotal: true,
+            repairMethod: true,
+            pricingMode: true,
+            fixedAmount: true,
+          },
+        },
+      },
+    }),
     prisma.estimate.findMany({
       orderBy: { updatedAt: "desc" },
       take: 8,
@@ -17,9 +39,17 @@ export async function GET() {
     }),
   ]);
 
+  const byStatus = sumEstimatesByStatus(allEstimates);
+  const statusTotals = ESTIMATE_STATUSES.map((s) => ({
+    status: s.value,
+    label: s.label,
+    count: byStatus[s.value]?.count ?? 0,
+    amount: byStatus[s.value]?.amount ?? 0,
+  }));
+
   const recentWithTotals = recent.map((est) => ({
     ...est,
-    totals: computeTotals(est.lineItems, est.discountType, est.discountValue, est.taxRate),
+    totals: computeEstimateTotals(est),
   }));
 
   const [clientCount, vehicleCount, estimateCount] = await Promise.all([
@@ -30,7 +60,8 @@ export async function GET() {
 
   return NextResponse.json({
     clients,
-    estimates,
+    estimates: statusTotals,
+    statusTotals,
     recent: recentWithTotals,
     counts: { clients: clientCount, vehicles: vehicleCount, estimates: estimateCount },
   });

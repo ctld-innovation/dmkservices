@@ -57,6 +57,17 @@ export const VEHICLE_LINK_ROLES = [
   { value: "INTERMEDIARY", label: "Intermédiaire" },
 ] as const;
 
+export const CAR_DIAGRAMS = [
+  { value: "exploded", label: "Éclaté (schéma panneaux, sans pare-chocs)" },
+  { value: "assembled", label: "Silhouette (vue assemblée)" },
+] as const;
+
+export type CarDiagram = (typeof CAR_DIAGRAMS)[number]["value"];
+
+export function resolveCarDiagram(value?: string | null): CarDiagram {
+  return value === "assembled" ? "assembled" : "exploded";
+}
+
 export const DEFAULT_PANELS = [
   "Toit",
   "Capot",

@@ -3,8 +3,11 @@
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { CompanySettings, LookupValue, Role } from "@prisma/client";
-import { ROLES } from "@/lib/constants";
+import { ROLES, resolveCarDiagram, type CarDiagram } from "@/lib/constants";
 import { Button, ErrorText, Field, Input, Select, Textarea } from "@/components/ui";
+import { DiagramMappingEditor } from "@/components/DiagramMappingEditor";
+import type { DiagramMaps } from "@/lib/diagram";
+import Link from "next/link";
 
 type UserRow = {
   id: string;
@@ -58,7 +61,7 @@ export function SettingsForm({
       email: form.get("email"),
       taxId: form.get("taxId"),
       defaultLaborRate: Number(form.get("defaultLaborRate")),
-      defaultTaxRate: Number(form.get("defaultTaxRate")),
+      defaultTaxRate: settings.defaultTaxRate,
       estimatePrefix: form.get("estimatePrefix"),
       estimateSeqPad: Number(form.get("estimateSeqPad")),
       termsAndConditions: form.get("termsAndConditions"),
@@ -85,6 +88,39 @@ export function SettingsForm({
     const fd = new FormData();
     fd.append("file", file);
     await fetch("/api/settings/logo", { method: "POST", body: fd });
+    router.refresh();
+  }
+
+  async function saveDiagram(carDiagram: CarDiagram, carDiagramMaps: DiagramMaps) {
+    const payload = {
+      name: settings.name,
+      street: settings.street,
+      city: settings.city,
+      postalCode: settings.postalCode,
+      country: settings.country,
+      phone: settings.phone,
+      email: settings.email,
+      taxId: settings.taxId,
+      defaultLaborRate: settings.defaultLaborRate,
+      defaultTaxRate: settings.defaultTaxRate,
+      estimatePrefix: settings.estimatePrefix,
+      estimateSeqPad: settings.estimateSeqPad,
+      carDiagram,
+      carDiagramMaps,
+      termsAndConditions: settings.termsAndConditions,
+      smtpHost: settings.smtpHost,
+      smtpPort: settings.smtpPort,
+      smtpUser: settings.smtpUser,
+      smtpPass: settings.smtpPass ? "********" : "",
+      smtpFrom: settings.smtpFrom,
+    };
+    const res = await fetch("/api/settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Enregistrement impossible");
     router.refresh();
   }
 
@@ -160,6 +196,13 @@ export function SettingsForm({
             {t.label}
           </button>
         ))}
+        <button
+          type="button"
+          className="btn btn-ghost"
+          onClick={() => router.push("/settings/rates")}
+        >
+          Taux horaires
+        </button>
       </div>
 
       {tab === "company" ? (
@@ -189,12 +232,13 @@ export function SettingsForm({
             <Field label="Pays">
               <Input name="country" defaultValue={settings.country ?? "France"} />
             </Field>
-            <Field label="Taux horaire par défaut (€)">
-              <Input name="defaultLaborRate" type="number" step="0.5" defaultValue={settings.defaultLaborRate} />
-            </Field>
-            <Field label="TVA par défaut (%)">
-              <Input name="defaultTaxRate" type="number" step="0.1" defaultValue={settings.defaultTaxRate} />
-            </Field>
+            <div className="sm:col-span-2">
+              <p className="label">Taux horaires par défaut</p>
+              <input type="hidden" name="defaultLaborRate" value={settings.defaultLaborRate} />
+              <Link href="/settings/rates" className="btn btn-ghost mt-1">
+                Configurer les taux horaires et la TVA ({settings.defaultLaborRate} €/h · {settings.defaultTaxRate} %)
+              </Link>
+            </div>
             <Field label="Préfixe des devis">
               <Input name="estimatePrefix" defaultValue={settings.estimatePrefix} />
             </Field>
@@ -272,6 +316,13 @@ export function SettingsForm({
           <p className="mt-4 text-sm text-slate-500">
             Méthodes de réparation prédéfinies : PDR, réparation conventionnelle, remplacement de pièce.
           </p>
+          <DiagramMappingEditor
+            initialDiagram={resolveCarDiagram(settings.carDiagram)}
+            initialMaps={settings.carDiagramMaps}
+            pieces={lookups.filter((l) => l.category === "PANEL" && l.active)}
+            isAdmin={isAdmin}
+            onSave={saveDiagram}
+          />
         </div>
       ) : null}
 

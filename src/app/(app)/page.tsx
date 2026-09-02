@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Car, ClipboardList, Plus, Users } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { computeTotals } from "@/lib/calculations";
+import { computeEstimateTotals, sumEstimatesByStatus } from "@/lib/calculations";
 import { clientLabel, formatCurrency, formatDate, vehicleLabel } from "@/lib/utils";
 import { ESTIMATE_STATUSES, STATUS_COLORS, labelOf } from "@/lib/constants";
 import { getSession, canWrite } from "@/lib/auth";
@@ -12,9 +12,30 @@ import { WriteOnly } from "@/components/Actions";
 export default async function DashboardPage() {
   const session = await getSession();
   const writable = session ? canWrite(session.role) : false;
-  const [clients, estimates, recent, counts] = await Promise.all([
+  const [clients, allEstimates, recent, counts] = await Promise.all([
     prisma.client.groupBy({ by: ["type"], _count: { _all: true } }),
-    prisma.estimate.groupBy({ by: ["status"], _count: { _all: true } }),
+    prisma.estimate.findMany({
+      select: {
+        status: true,
+        discountType: true,
+        discountValue: true,
+        taxRate: true,
+        servicePricing: true,
+        dismantlingAmount: true,
+        lineItems: {
+          select: {
+            laborHours: true,
+            laborRate: true,
+            partsCost: true,
+            paintCost: true,
+            lineTotal: true,
+            repairMethod: true,
+            pricingMode: true,
+            fixedAmount: true,
+          },
+        },
+      },
+    }),
     prisma.estimate.findMany({
       orderBy: { updatedAt: "desc" },
       take: 8,
@@ -31,6 +52,13 @@ export default async function DashboardPage() {
     counts.vehicles,
     counts.estimates,
   ]);
+  const byStatus = sumEstimatesByStatus(allEstimates);
+  const statusTotals = ESTIMATE_STATUSES.map((s) => ({
+    status: s.value,
+    label: s.label,
+    count: byStatus[s.value]?.count ?? 0,
+    amount: byStatus[s.value]?.amount ?? 0,
+  }));
 
   return (
     <div>
@@ -58,14 +86,35 @@ export default async function DashboardPage() {
         <Stat icon={<ClipboardList size={18} />} label="Devis" value={estimateCount} href="/estimates" />
       </div>
 
+      <div className="mb-6">
+        <h2 className="mb-3 font-semibold text-navy">Montants TTC par statut</h2>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          {statusTotals.map((row) => (
+            <Link
+              key={row.status}
+              href={`/estimates?status=${row.status}`}
+              className="card p-4 transition hover:shadow-md"
+            >
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <span className={`badge ${STATUS_COLORS[row.status]}`}>{row.label}</span>
+                <span className="text-xs text-slate-500">
+                  {row.count} devis
+                </span>
+              </div>
+              <div className="text-lg font-semibold text-navy">{formatCurrency(row.amount)}</div>
+            </Link>
+          ))}
+        </div>
+      </div>
+
       <div className="mb-6 grid gap-4 lg:grid-cols-2">
         <Card className="p-5">
           <h2 className="mb-2 font-semibold text-navy">Clients par type</h2>
           <ClientTypeChart data={clients} />
         </Card>
         <Card className="p-5">
-          <h2 className="mb-2 font-semibold text-navy">Devis par statut</h2>
-          <StatusChart data={estimates} />
+          <h2 className="mb-2 font-semibold text-navy">Montants des devis par statut</h2>
+          <StatusChart data={statusTotals} />
         </Card>
       </div>
 
@@ -90,12 +139,7 @@ export default async function DashboardPage() {
             </thead>
             <tbody>
               {recent.map((est) => {
-                const totals = computeTotals(
-                  est.lineItems,
-                  est.discountType,
-                  est.discountValue,
-                  est.taxRate,
-                );
+                const totals = computeEstimateTotals(est);
                 return (
                   <tr key={est.id}>
                     <td>

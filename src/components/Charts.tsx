@@ -52,28 +52,59 @@ export function ClientTypeChart({
 export function StatusChart({
   data,
 }: {
-  data: Array<{ status: string; _count: { _all: number } }>;
+  data: Array<{ status: string; count: number; amount: number }>;
 }) {
-  const chart = ESTIMATE_STATUSES.map((s) => ({
-    name: s.label,
-    value: data.find((d) => d.status === s.value)?._count._all ?? 0,
-    fill: STATUS_COLORS[s.value],
-  }));
+  const chart = ESTIMATE_STATUSES.map((s) => {
+    const row = data.find((d) => d.status === s.value);
+    return {
+      name: s.label,
+      status: s.value,
+      count: row?.count ?? 0,
+      amount: row?.amount ?? 0,
+      fill: STATUS_COLORS[s.value],
+    };
+  });
   return (
     <div className="h-64">
       <ResponsiveContainer>
         <BarChart data={chart}>
           <CartesianGrid strokeDasharray="3 3" vertical={false} />
           <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-          <YAxis allowDecimals={false} />
-          <Tooltip />
-          <Bar dataKey="value" radius={[6, 6, 0, 0]}>
+          <YAxis
+            tick={{ fontSize: 11 }}
+            tickFormatter={(v) =>
+              new Intl.NumberFormat("fr-FR", { notation: "compact", maximumFractionDigits: 1 }).format(Number(v) || 0)
+            }
+          />
+          <Tooltip content={<StatusAmountTooltip />} />
+          <Bar dataKey="amount" radius={[6, 6, 0, 0]}>
             {chart.map((entry, i) => (
               <Cell key={i} fill={entry.fill} />
             ))}
           </Bar>
         </BarChart>
       </ResponsiveContainer>
+    </div>
+  );
+}
+
+function StatusAmountTooltip({
+  active,
+  payload,
+}: {
+  active?: boolean;
+  payload?: Array<{ payload: { name: string; count: number; amount: number } }>;
+}) {
+  if (!active || !payload?.[0]) return null;
+  const d = payload[0].payload;
+  const amount = new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" }).format(d.amount);
+  return (
+    <div className="rounded-lg border border-line bg-white px-3 py-2 text-sm shadow">
+      <div className="font-medium text-navy">{d.name}</div>
+      <div className="font-semibold">{amount}</div>
+      <div className="text-slate-500">
+        {d.count} devis
+      </div>
     </div>
   );
 }

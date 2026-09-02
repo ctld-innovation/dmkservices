@@ -9,20 +9,20 @@ export function Button({
   variant?: "primary" | "navy" | "ghost" | "danger";
 }) {
   return (
-    <button className={cn("btn", `btn-${variant}`, className)} {...props} />
+    <button {...props} className={cn("btn", `btn-${variant}`, className)} />
   );
 }
 
-export function Input(props: InputHTMLAttributes<HTMLInputElement>) {
-  return <input className={cn("input", props.className)} {...props} />;
+export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) {
+  return <input {...props} className={cn("input", className)} />;
 }
 
-export function Select(props: SelectHTMLAttributes<HTMLSelectElement>) {
-  return <select className={cn("select", props.className)} {...props} />;
+export function Select({ className, ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
+  return <select {...props} className={cn("select", className)} />;
 }
 
-export function Textarea(props: TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return <textarea className={cn("textarea", props.className)} {...props} />;
+export function Textarea({ className, ...props }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  return <textarea {...props} className={cn("textarea", className)} />;
 }
 
 export function Field({

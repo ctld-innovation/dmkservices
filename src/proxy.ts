@@ -8,10 +8,15 @@ export async function proxy(req: NextRequest) {
   if (
     PUBLIC.some((p) => pathname === p || pathname.startsWith(p + "/")) ||
     pathname.startsWith("/_next") ||
+    pathname.startsWith("/media-next") ||
     pathname.startsWith("/favicon") ||
     pathname.startsWith("/uploads") ||
+    pathname.startsWith("/branding") ||
     pathname.endsWith(".svg") ||
-    pathname.endsWith(".png")
+    pathname.endsWith(".png") ||
+    pathname.endsWith(".woff2") ||
+    pathname.endsWith(".css") ||
+    pathname.endsWith(".js")
   ) {
     return NextResponse.next();
   }
@@ -38,5 +43,5 @@ export async function proxy(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  matcher: ["/((?!_next/static|_next/image|media-next/|favicon.ico).*)"],
 };

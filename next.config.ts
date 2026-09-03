@@ -1,17 +1,14 @@
-import type { NextConfig } from "next";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import type { NextConfig } from "next";
 
-/** Force la racine du projet : un package-lock.json orphelin dans /home/ubuntu
- *  fait mal détecter le workspace et provoque des 500 sur /_next/static. */
-const projectRoot = path.dirname(fileURLToPath(import.meta.url));
+/** Un lockfile parent (/home/ubuntu) faisait écrire CSS/chunks hors du projet
+ *  et provoquait des 500 sur /_next/static. */
+const root = path.resolve(__dirname);
 
 const nextConfig: NextConfig = {
   serverExternalPackages: ["@prisma/client", "bcryptjs", "jspdf", "sharp"],
-  turbopack: {
-    root: projectRoot,
-  },
-  outputFileTracingRoot: projectRoot,
+  outputFileTracingRoot: root,
+  turbopack: { root },
 };
 
 export default nextConfig;

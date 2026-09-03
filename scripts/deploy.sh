@@ -38,20 +38,26 @@ echo "==> prisma generate"
 npx prisma generate
 
 echo "==> build"
+rm -rf .next
 npm run build
 
 if [ ! -d "$APP_DIR/.next/static" ]; then
   echo "==> ERREUR : .next/static manquant après le build"
   exit 1
 fi
-echo "==> .next/static OK ($(find "$APP_DIR/.next/static" -type f | wc -l) fichiers)"
+css_count="$(find .next/static -name '*.css' 2>/dev/null | wc -l | tr -d ' ')"
+if [ "$css_count" = "0" ]; then
+  echo "==> Erreur : aucun CSS généré dans .next/static"
+  exit 1
+fi
+echo "==> .next/static OK — CSS générés : $css_count fichier(s)"
 
 echo "==> restart tmux ($SESSION)"
 tmux kill-session -t "$SESSION" 2>/dev/null || true
 tmux new-session -d -s "$SESSION" "bash -lc 'source ~/.nvm/nvm.sh && nvm use && cd $APP_DIR && npm start -- -p $PORT'"
 
-sleep 2
-if curl -sf "http://127.0.0.1:$PORT" > /dev/null; then
+sleep 5
+if curl -sf "http://127.0.0.1:$PORT/login" > /dev/null; then
   echo "==> App OK sur le port $PORT"
 else
   echo "==> Attention : l'app ne répond pas encore sur le port $PORT"

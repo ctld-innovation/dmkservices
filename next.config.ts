@@ -1,9 +1,9 @@
 import path from "node:path";
 import type { NextConfig } from "next";
 
-/** Un lockfile parent (/home/ubuntu) faisait écrire CSS/chunks hors du projet
- *  et provoquait des 500 sur /_next/static. */
-const root = path.resolve(__dirname);
+/** process.cwd() = répertoire d'où on lance build/start (évite un __dirname
+ *  incorrect si next.config.ts est compilé ailleurs). */
+const root = path.resolve(process.cwd());
 
 const nextConfig: NextConfig = {
   serverExternalPackages: ["@prisma/client", "bcryptjs", "jspdf", "sharp"],

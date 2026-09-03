@@ -3,6 +3,11 @@
 # Prérequis serveur : .env configuré, accès git au repo privé (deploy key).
 set -euo pipefail
 
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+nvm use || nvm use default
+echo "==> Node $(node -v) / npm $(npm -v)"
+
 APP_DIR="/home/ubuntu/dmkservices"
 SESSION="dmkservices"
 PORT=3003
@@ -27,7 +32,7 @@ npm run build
 
 echo "==> restart tmux ($SESSION)"
 tmux kill-session -t "$SESSION" 2>/dev/null || true
-tmux new-session -d -s "$SESSION" "cd $APP_DIR && npm start -- -p $PORT"
+tmux new-session -d -s "$SESSION" "bash -lc 'source ~/.nvm/nvm.sh && nvm use && cd $APP_DIR && npm start -- -p $PORT'"
 
 sleep 2
 if curl -sf "http://127.0.0.1:$PORT" > /dev/null; then

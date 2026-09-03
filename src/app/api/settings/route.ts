@@ -6,13 +6,14 @@ import { settingsSchema } from "@/lib/validations";
 import { writeAudit } from "@/lib/audit";
 import type { z } from "zod";
 
-function toPrismaSettingsData(data: Partial<z.infer<typeof settingsSchema>>): Prisma.CompanySettingsUpdateInput {
+function toPrismaSettingsData(data: Partial<z.infer<typeof settingsSchema>>) {
   const { carDiagramMaps, ...rest } = data;
-  const result: Prisma.CompanySettingsUpdateInput = { ...rest };
-  if (carDiagramMaps !== undefined) {
-    result.carDiagramMaps = carDiagramMaps === null ? Prisma.DbNull : carDiagramMaps;
-  }
-  return result;
+  return {
+    ...rest,
+    ...(carDiagramMaps !== undefined
+      ? { carDiagramMaps: carDiagramMaps === null ? Prisma.DbNull : carDiagramMaps }
+      : {}),
+  };
 }
 
 export async function GET() {
@@ -42,7 +43,11 @@ export async function PATCH(req: Request) {
   const settings = await prisma.companySettings.upsert({
     where: { id: "default" },
     update: prismaData,
-    create: { id: "default", name: "DMK Services", ...prismaData },
+    create: {
+      ...prismaData,
+      id: "default",
+      name: prismaData.name ?? "DMK Services",
+    },
   });
   await writeAudit(session, "Settings", "default", "UPDATE");
   return NextResponse.json({ ...settings, smtpPass: settings.smtpPass ? "********" : "" });

@@ -21,6 +21,16 @@ echo "==> git fetch + reset"
 git fetch origin "$BRANCH"
 git reset --hard "origin/$BRANCH"
 
+# Un lockfile orphelin dans le dossier parent (ex. /home/ubuntu/package-lock.json)
+# fait mal détecter la racine Turbopack → 500 sur /_next/static en prod.
+PARENT_DIR="$(dirname "$APP_DIR")"
+for lock in package-lock.json pnpm-lock.yaml yarn.lock bun.lock bun.lockb; do
+  if [ -f "$PARENT_DIR/$lock" ] && [ ! -f "$PARENT_DIR/package.json" ]; then
+    echo "==> Lockfile orphelin détecté : $PARENT_DIR/$lock — renommage (.dmk-bak)"
+    mv "$PARENT_DIR/$lock" "$PARENT_DIR/$lock.dmk-bak"
+  fi
+done
+
 echo "==> npm install"
 npm install
 
@@ -29,6 +39,12 @@ npx prisma generate
 
 echo "==> build"
 npm run build
+
+if [ ! -d "$APP_DIR/.next/static" ]; then
+  echo "==> ERREUR : .next/static manquant après le build"
+  exit 1
+fi
+echo "==> .next/static OK ($(find "$APP_DIR/.next/static" -type f | wc -l) fichiers)"
 
 echo "==> restart tmux ($SESSION)"
 tmux kill-session -t "$SESSION" 2>/dev/null || true

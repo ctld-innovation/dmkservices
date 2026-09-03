@@ -94,7 +94,7 @@ export const EXPLODED_PANEL_SHAPES: DiagramPanelShape[] = [
     badge: { x: 855, y: 315 },
   },
 ];
-export type DiagramMaps = Record<CarDiagram, Record<string, string>>;
+
 
 export const ASSEMBLED_ZONE_LABELS = [
   "Pare-chocs avant",

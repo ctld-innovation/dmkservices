@@ -1,8 +1,19 @@
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { canAdmin, canWrite, getSession, unauthorized, forbidden, jsonError } from "@/lib/auth";
 import { settingsSchema } from "@/lib/validations";
 import { writeAudit } from "@/lib/audit";
+import type { z } from "zod";
+
+function toPrismaSettingsData(data: Partial<z.infer<typeof settingsSchema>>): Prisma.CompanySettingsUpdateInput {
+  const { carDiagramMaps, ...rest } = data;
+  const result: Prisma.CompanySettingsUpdateInput = { ...rest };
+  if (carDiagramMaps !== undefined) {
+    result.carDiagramMaps = carDiagramMaps === null ? Prisma.DbNull : carDiagramMaps;
+  }
+  return result;
+}
 
 export async function GET() {
   const session = await getSession();
@@ -27,10 +38,11 @@ export async function PATCH(req: Request) {
     keys.length > 0 && keys.every((k) => k === "defaultTaxRate" || k === "defaultLaborRate");
   if (!canAdmin(session.role) && !(canWrite(session.role) && writerTaxOnly)) return forbidden();
   if (data.smtpPass === "********") delete (data as { smtpPass?: string }).smtpPass;
+  const prismaData = toPrismaSettingsData(data);
   const settings = await prisma.companySettings.upsert({
     where: { id: "default" },
-    update: data,
-    create: { id: "default", name: "DMK Services", ...data },
+    update: prismaData,
+    create: { id: "default", name: "DMK Services", ...prismaData },
   });
   await writeAudit(session, "Settings", "default", "UPDATE");
   return NextResponse.json({ ...settings, smtpPass: settings.smtpPass ? "********" : "" });

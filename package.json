@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "NEXT_ASSET_PREFIX=/media-next next build && node scripts/copy-static.cjs",
+    "build": "NEXT_ASSET_PREFIX=/media-next next build --webpack && node scripts/copy-static.cjs",
     "start": "NEXT_ASSET_PREFIX=/media-next next start",
     "lint": "eslint",
     "db:push": "prisma db push",

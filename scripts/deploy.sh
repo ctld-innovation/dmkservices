@@ -49,7 +49,12 @@ npx prisma generate
 
 echo "==> build (+ copie static → public/media-next)"
 rm -rf .next public/media-next
-npm run build
+npm run build || {
+  echo "==> ERREUR build — derniers logs npm éventuels ci-dessus"
+  exit 1
+}
+echo "==> Contenu public/media-next :"
+find public/media-next -type f 2>/dev/null | head -n 10 || true
 
 if [ ! -d "$APP_DIR/public/media-next/_next/static" ]; then
   echo "==> ERREUR : public/media-next/_next/static manquant après le build"

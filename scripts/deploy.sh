@@ -22,14 +22,13 @@ git fetch origin "$BRANCH"
 git reset --hard "origin/$BRANCH"
 
 # Lockfiles / builds Next dans le dossier parent → mauvaise racine Turbopack.
-# Non bloquant : un fichier root-owned ne doit pas faire échouer le déploiement.
 PARENT_DIR="$(dirname "$APP_DIR")"
 for lock in package-lock.json pnpm-lock.yaml yarn.lock bun.lock bun.lockb; do
   if [ -f "$PARENT_DIR/$lock" ]; then
     if mv -f "$PARENT_DIR/$lock" "$PARENT_DIR/$lock.dmk-bak" 2>/dev/null; then
       echo "==> Neutralisation $PARENT_DIR/$lock → .dmk-bak"
     else
-      echo "==> WARN: impossible de déplacer $PARENT_DIR/$lock (permissions ?)"
+      echo "==> WARN: impossible de déplacer $PARENT_DIR/$lock"
     fi
   fi
 done
@@ -48,30 +47,28 @@ npm install
 echo "==> prisma generate"
 npx prisma generate
 
-echo "==> build"
-rm -rf .next
+echo "==> build (+ copie static → public/media-next)"
+rm -rf .next public/media-next
 npm run build
 
-if [ ! -d "$APP_DIR/.next/static" ]; then
-  echo "==> ERREUR : .next/static manquant après le build"
+if [ ! -d "$APP_DIR/public/media-next/_next/static" ]; then
+  echo "==> ERREUR : public/media-next/_next/static manquant après le build"
   exit 1
 fi
-css_count="$(find .next/static -name '*.css' 2>/dev/null | wc -l | tr -d ' ')"
+css_count="$(find public/media-next/_next/static -name '*.css' 2>/dev/null | wc -l | tr -d ' ')"
 if [ "$css_count" = "0" ]; then
-  echo "==> Erreur : aucun CSS généré dans .next/static"
+  echo "==> Erreur : aucun CSS dans public/media-next/_next/static"
   exit 1
 fi
-echo "==> .next/static OK — CSS générés : $css_count fichier(s)"
-echo "==> Exemple fichiers :"
-find .next/static -type f | head -n 8
+echo "==> media-next static OK — CSS : $css_count fichier(s)"
 
 echo "==> restart tmux ($SESSION)"
 tmux kill-session -t "$SESSION" 2>/dev/null || true
-tmux new-session -d -s "$SESSION" "bash -lc 'source ~/.nvm/nvm.sh && nvm use && cd \"$APP_DIR\" && export PORT=$PORT && npm start'"
+tmux new-session -d -s "$SESSION" "bash -lc 'source ~/.nvm/nvm.sh && nvm use && cd \"$APP_DIR\" && npm start -- -p $PORT'"
 
 echo "==> attente démarrage"
 ok=0
-for i in 1 2 3 4 5 6 7 8 9 10 11 12 15 18 20; do
+for _ in $(seq 1 20); do
   if curl -sf "http://127.0.0.1:$PORT/login" > /dev/null; then
     ok=1
     break
@@ -80,26 +77,25 @@ for i in 1 2 3 4 5 6 7 8 9 10 11 12 15 18 20; do
 done
 if [ "$ok" != "1" ]; then
   echo "==> ERREUR : l'app ne répond pas sur le port $PORT"
-  echo "==> Logs tmux :"
   tmux capture-pane -t "$SESSION" -p -S -80 2>/dev/null || true
   exit 1
 fi
 echo "==> App OK sur le port $PORT"
 
-ASSET="$(curl -sf "http://127.0.0.1:$PORT/login" | grep -oE '/_next/static/[^\"[:space:]]+\.(css|js)' | head -1 || true)"
+ASSET="$(curl -sf "http://127.0.0.1:$PORT/login" | grep -oE '/media-next/_next/static/[^\"[:space:]]+\.(css|js)' | head -1 || true)"
 if [ -z "$ASSET" ]; then
-  echo "==> ERREUR : aucun asset /_next/static trouvé dans /login"
+  # fallback: ancien chemin si assetPrefix absent
+  ASSET="$(curl -sf "http://127.0.0.1:$PORT/login" | grep -oE '/_next/static/[^\"[:space:]]+\.(css|js)' | head -1 || true)"
+fi
+if [ -z "$ASSET" ]; then
+  echo "==> ERREUR : aucun asset static trouvé dans /login"
   exit 1
 fi
 echo "==> Contrôle asset $ASSET"
 code="$(curl -s -o /tmp/dmk-asset-check -w '%{http_code}' "http://127.0.0.1:$PORT$ASSET")"
 if [ "$code" != "200" ]; then
   echo "==> ERREUR : $ASSET → HTTP $code (attendu 200)"
-  echo "==> Corps :"
   head -c 300 /tmp/dmk-asset-check; echo
-  echo "==> Fichier disque :"
-  ls -la ".next/static/${ASSET#/_next/static/}" 2>&1 || true
-  echo "==> Logs tmux :"
   tmux capture-pane -t "$SESSION" -p -S -80 2>/dev/null || true
   exit 1
 fi

@@ -6,13 +6,15 @@ process.env.TURBOPACK = "";
 
 const { createServer } = require("node:http");
 const { parse } = require("node:url");
-const { createReadStream, existsSync, readdirSync, statSync } = require("node:fs");
+const { createReadStream, existsSync, readdirSync, readFileSync, statSync } = require("node:fs");
 const { join, extname, normalize, sep } = require("node:path");
 const next = require("next");
 
 // Toujours le dossier du projet (pas un cwd / .next parent parasite).
 const dir = __dirname;
+process.chdir(dir);
 const staticRoot = join(dir, ".next", "static");
+const buildIdPath = join(dir, ".next", "BUILD_ID");
 const hostname = process.env.HOSTNAME || "127.0.0.1";
 const port = Number(process.env.PORT || 3003);
 
@@ -65,7 +67,11 @@ if (!existsSync(staticRoot)) {
   process.exit(1);
 }
 
+const buildId = existsSync(buildIdPath)
+  ? readFileSync(buildIdPath, "utf8").trim()
+  : "?";
 console.log(`==> dir=${dir}`);
+console.log(`==> BUILD_ID=${buildId}`);
 console.log(`==> static=${staticRoot} (css=${countCss(staticRoot)})`);
 
 const app = next({ dev: false, hostname, port, dir });

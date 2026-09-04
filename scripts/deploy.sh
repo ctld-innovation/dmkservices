@@ -35,7 +35,7 @@ npm install
 echo "==> prisma generate"
 npx prisma generate
 
-echo "==> build"
+echo "==> build (webpack + copie public/media-next)"
 rm -rf .next public/media-next
 npm run build
 
@@ -64,12 +64,20 @@ if [ "$ok" != "1" ]; then
   exit 1
 fi
 
-ASSET="$(curl -sf "http://127.0.0.1:$PORT/login" | grep -oE '/_next/static/[^\" ]+\.(css|js)' | head -1 || true)"
+HTML="$(curl -sf "http://127.0.0.1:$PORT/login")"
+if ! echo "$HTML" | grep -q '/media-next/_next/static/'; then
+  echo "==> ERREUR : assetPrefix absent du HTML (pas de /media-next/_next/static/)"
+  echo "$HTML" | tr '"' '\n' | grep static | head -10
+  exit 1
+fi
+
+ASSET="$(echo "$HTML" | grep -oE '/media-next/_next/static/[^\" ]+\.(css|js)' | head -1 || true)"
 echo "==> Contrôle $ASSET"
-code="$(curl -s -o /tmp/dmk-a -w '%{http_code}' "http://127.0.0.1:$PORT${ASSET:-/missing}")"
+code="$(curl -s -o /tmp/dmk-a -w '%{http_code}' "http://127.0.0.1:$PORT$ASSET")"
 if [ "$code" != "200" ]; then
   echo "==> ERREUR asset HTTP $code"
   head -c 200 /tmp/dmk-a; echo
+  ls -la "public${ASSET}" 2>&1 || ls -la "public/media-next/_next/static" | head
   tmux capture-pane -t "$SESSION" -p -S -50 2>/dev/null || true
   exit 1
 fi

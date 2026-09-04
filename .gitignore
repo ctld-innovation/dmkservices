@@ -16,7 +16,6 @@
 # next.js
 /.next/
 /out/
-# assets prod copiés après build (assetPrefix)
 /public/media-next/
 
 # production

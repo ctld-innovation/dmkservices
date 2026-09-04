@@ -5,6 +5,14 @@ const PUBLIC = ["/api/auth/login", "/api/locale"];
 
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
+
+  // Contourne le handler cassé de Next : sert les copies dans public/media-next.
+  if (pathname.startsWith("/_next/static/")) {
+    const url = req.nextUrl.clone();
+    url.pathname = `/media-next${pathname}`;
+    return NextResponse.rewrite(url);
+  }
+
   if (
     PUBLIC.some((p) => pathname === p || pathname.startsWith(p + "/")) ||
     pathname.startsWith("/_next") ||
@@ -13,10 +21,7 @@ export async function proxy(req: NextRequest) {
     pathname.startsWith("/uploads") ||
     pathname.startsWith("/branding") ||
     pathname.endsWith(".svg") ||
-    pathname.endsWith(".png") ||
-    pathname.endsWith(".woff2") ||
-    pathname.endsWith(".css") ||
-    pathname.endsWith(".js")
+    pathname.endsWith(".png")
   ) {
     return NextResponse.next();
   }
@@ -43,5 +48,6 @@ export async function proxy(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|media-next/|favicon.ico).*)"],
+  // Inclure /_next/static pour le rewrite vers public/media-next
+  matcher: ["/((?!_next/image|favicon.ico).*)"],
 };

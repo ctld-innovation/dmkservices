@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { canWrite, getSession, unauthorized, forbidden, jsonError } from "@/lib/auth";
 import { writeAudit } from "@/lib/audit";
 import { nextEstimateNumber } from "@/lib/numbering";
+import { applyHagelHoursToLines, parseHagelExpertConfig } from "@/lib/hagelExpert";
+import { computeLineTotal, isMethodFixed } from "@/lib/calculations";
 
 export async function POST(
   _req: Request,
@@ -12,13 +14,17 @@ export async function POST(
   if (!session) return unauthorized();
   if (!canWrite(session.role)) return forbidden();
   const { id } = await params;
-  const source = await prisma.estimate.findUnique({
-    where: { id },
-    include: { lineItems: true },
-  });
+  const [source, settings] = await Promise.all([
+    prisma.estimate.findUnique({
+      where: { id },
+      include: { lineItems: true },
+    }),
+    prisma.companySettings.findUnique({ where: { id: "default" }, select: { hagelExpert: true } }),
+  ]);
   if (!source) return jsonError("Devis introuvable", 404);
 
   const number = await nextEstimateNumber();
+  const hagelLines = applyHagelHoursToLines(source.lineItems, parseHagelExpertConfig(settings?.hagelExpert));
   const copy = await prisma.estimate.create({
     data: {
       number,
@@ -37,13 +43,17 @@ export async function POST(
       dismantlingAmount: source.dismantlingAmount,
       servicePricing: source.servicePricing ?? undefined,
       lineItems: {
-        create: source.lineItems.map((line) => ({
+        create: hagelLines.map((line) => ({
           sortOrder: line.sortOrder,
           panel: line.panel,
           damageType: line.damageType,
           repairMethod: line.repairMethod,
           severity: line.severity,
           dentCount: line.dentCount,
+          dentSize: line.dentSize,
+          orientation: line.orientation,
+          aluminum: line.aluminum,
+          glue: line.glue,
           laborHours: line.laborHours,
           laborRate: line.laborRate,
           laborRateId: line.laborRateId,
@@ -51,7 +61,7 @@ export async function POST(
           fixedAmount: line.fixedAmount,
           partsCost: line.partsCost,
           paintCost: line.paintCost,
-          lineTotal: line.lineTotal,
+          lineTotal: computeLineTotal(line, isMethodFixed(source.servicePricing, line.repairMethod)),
         })),
       },
       statusLogs: {

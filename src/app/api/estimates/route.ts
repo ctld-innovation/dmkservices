@@ -6,6 +6,7 @@ import { estimateSchema } from "@/lib/validations";
 import { writeAudit } from "@/lib/audit";
 import { pagination } from "@/lib/utils";
 import { computeLineTotal, isMethodFixed, parseServicePricing } from "@/lib/calculations";
+import { applyHagelHoursToLines, parseHagelExpertConfig } from "@/lib/hagelExpert";
 import { nextEstimateNumber } from "@/lib/numbering";
 
 export async function GET(req: NextRequest) {
@@ -50,8 +51,13 @@ export async function POST(req: Request) {
   const parsed = estimateSchema.safeParse(body);
   if (!parsed.success) return jsonError(parsed.error.issues[0]?.message ?? "Données invalides");
 
-  const number = await nextEstimateNumber();
+  const [number, settings] = await Promise.all([
+    nextEstimateNumber(),
+    prisma.companySettings.findUnique({ where: { id: "default" }, select: { hagelExpert: true } }),
+  ]);
   const data = parsed.data;
+  const hagel = parseHagelExpertConfig(settings?.hagelExpert);
+  const lineItems = applyHagelHoursToLines(data.lineItems, hagel);
   const estimate = await prisma.estimate.create({
     data: {
       number,
@@ -70,7 +76,7 @@ export async function POST(req: Request) {
       dismantlingAmount: data.dismantlingAmount ?? 0,
       servicePricing: parseServicePricing(data.servicePricing),
       lineItems: {
-        create: data.lineItems.map((line, idx) => {
+        create: lineItems.map((line, idx) => {
           const { id: _lineId, ...rest } = line;
           void _lineId;
           const methodFixed = isMethodFixed(data.servicePricing, rest.repairMethod);

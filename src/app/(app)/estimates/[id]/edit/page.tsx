@@ -42,6 +42,7 @@ export default async function EditEstimatePage({ params }: { params: Promise<{ i
           resolveCarDiagram(settings?.carDiagram),
           panels,
         )}
+        hagelExpert={settings?.hagelExpert}
         initial={{
           date: estimate.date,
           damageDate: estimate.damageDate,

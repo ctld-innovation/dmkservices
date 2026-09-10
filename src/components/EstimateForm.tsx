@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { GripVertical, Plus, Trash2 } from "lucide-react";
 import {
   DAMAGE_TYPES,
+  DENT_ORIENTATIONS,
   ESTIMATE_STATUSES,
   REPAIR_METHODS,
   SEVERITIES,
@@ -13,6 +14,15 @@ import { computeLineTotal, computeEstimateTotals, applyHourlyDiscount, parseServ
 import { formatCurrency, toInputDate, cn } from "@/lib/utils";
 import { Button, ErrorText, Field, Input, Select, Textarea } from "@/components/ui";
 import { CarPanelPicker } from "@/components/CarPanelPicker";
+import { PanelLineDialog, type PanelLineDraft } from "@/components/PanelLineDialog";
+import {
+  applyHagelHoursToLines,
+  computeHagelHours,
+  firstPdrLineIndex,
+  hagelSizeOptions,
+  hagelVehicleExtrasWu,
+  parseHagelExpertConfig,
+} from "@/lib/hagelExpert";
 
 type Line = {
   uid: string;
@@ -21,6 +31,10 @@ type Line = {
   repairMethod: "PDR" | "CONVENTIONAL" | "PANEL_REPLACEMENT";
   severity: "LIGHT" | "MEDIUM" | "HEAVY";
   dentCount: number;
+  dentSize: number;
+  orientation: "HORIZONTAL" | "VERTICAL";
+  aluminum: boolean;
+  glue: boolean;
   laborHours: number;
   laborRate: number;
   laborRateId?: string | null;
@@ -52,6 +66,7 @@ export function EstimateForm({
   initial,
   diagramStyle = "exploded",
   panelMap,
+  hagelExpert,
 }: {
   clients: Array<{
     id: string;
@@ -75,6 +90,7 @@ export function EstimateForm({
   id?: string;
   diagramStyle?: "assembled" | "exploded";
   panelMap?: Record<string, string>;
+  hagelExpert?: unknown;
   initial?: {
     date?: Date | string;
     damageDate?: Date | string | null;
@@ -89,7 +105,14 @@ export function EstimateForm({
     includePhotos?: boolean;
     dismantlingAmount?: number | null;
     servicePricing?: unknown;
-    lineItems?: Array<Partial<Line> & { panel: string }>;
+    lineItems?: Array<
+      Partial<Omit<Line, "orientation">> & {
+        panel: string;
+        orientation?: string | null;
+        aluminum?: boolean | null;
+        glue?: boolean | null;
+      }
+    >;
   };
 }) {
   const router = useRouter();
@@ -105,6 +128,9 @@ export function EstimateForm({
   );
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [dropIndex, setDropIndex] = useState<number | null>(null);
+  const [editingPanel, setEditingPanel] = useState<string | null>(null);
+  const [panelDraft, setPanelDraft] = useState<PanelLineDraft | null>(null);
+  const hagel = useMemo(() => parseHagelExpertConfig(hagelExpert), [hagelExpert]);
 
   const defaultCatalog = laborRates.find((r) => r.isDefault && r.active) ?? laborRates.find((r) => r.active);
   const catalogById = useMemo(
@@ -129,6 +155,10 @@ export function EstimateForm({
       repairMethod: "PDR",
       severity: "LIGHT",
       dentCount: 0,
+      dentSize: 20,
+      orientation: "HORIZONTAL",
+      aluminum: false,
+      glue: false,
       laborHours: 0,
       laborRate: defaultRateAmount(discount),
       laborRateId: defaultCatalog?.id ?? null,
@@ -137,7 +167,11 @@ export function EstimateForm({
     };
   }
 
-  function makeLine(patch: Partial<Line> = {}, keepStoredRate = false, discount = activeDiscount): Line {
+  function makeLine(
+    patch: Partial<Omit<Line, "orientation">> & { orientation?: string | null } = {},
+    keepStoredRate = false,
+    discount = activeDiscount,
+  ): Line {
     const base = emptyLine(discount);
     const rateId = keepStoredRate
       ? (patch.laborRateId ?? null)
@@ -148,6 +182,10 @@ export function EstimateForm({
       ...base,
       ...patch,
       uid: patch.uid || base.uid,
+      dentSize: Number(patch.dentSize) || base.dentSize,
+      orientation: patch.orientation === "VERTICAL" ? "VERTICAL" : "HORIZONTAL",
+      aluminum: Boolean(patch.aluminum),
+      glue: Boolean(patch.glue),
       laborRateId: rateId || (!keepStoredRate ? defaultCatalog?.id ?? null : null),
       laborRate: keepStoredRate && patch.laborRate != null ? Number(patch.laborRate) : computed,
     };
@@ -189,24 +227,66 @@ export function EstimateForm({
     });
   }
 
-  function updateLine(index: number, patch: Partial<Line>) {
-    setLines((prev) => prev.map((line, i) => (i === index ? { ...line, ...patch } : line)));
+  function withHagel(current: Line[]) {
+    return applyHagelHoursToLines(current, hagel);
   }
 
-  function togglePanel(panel: string) {
+  function updateLine(index: number, patch: Partial<Line>) {
     setLines((prev) => {
-      const existing = prev.findIndex((line) => line.panel === panel);
-      if (existing >= 0) {
-        const next = prev.filter((_, i) => i !== existing);
-        return next.length ? next : [makeLine()];
-      }
-      const dentLine = makeLine({ panel, damageType: "DENT", dentCount: 1 });
-      const blank = prev.findIndex((line) => !line.panel);
-      if (blank >= 0) {
-        return prev.map((line, i) => (i === blank ? { ...dentLine, uid: line.uid } : line));
-      }
-      return [...prev, dentLine];
+      const next = prev.map((line, i) => (i === index ? { ...line, ...patch } : line));
+      const hagelFields = ["dentCount", "dentSize", "orientation", "aluminum", "glue", "repairMethod", "panel"];
+      if (Object.keys(patch).some((key) => hagelFields.includes(key))) return withHagel(next);
+      return next;
     });
+  }
+
+  function extrasForDraft(draft: PanelLineDraft) {
+    const simulated = [
+      ...lines.filter((line) => line.uid !== draft.uid && line.panel !== draft.panel),
+      { ...makeLine(draft), uid: draft.uid || "draft" },
+    ];
+    return firstPdrLineIndex(simulated) === simulated.length - 1 ? hagelVehicleExtrasWu(hagel) : 0;
+  }
+
+  function openPanel(panel: string) {
+    const existing = lines.find((line) => line.panel === panel);
+    const draft = existing ?? makeLine({ panel, damageType: "DENT", dentCount: 1, dentSize: 20 });
+    const extras = extrasForDraft(draft);
+    setPanelDraft(
+      draft.repairMethod === "PDR" ? { ...draft, laborHours: computeHagelHours(hagel, draft, extras) } : draft,
+    );
+    setEditingPanel(panel);
+  }
+
+  function savePanel(draft: PanelLineDraft) {
+    setLines((prev) => {
+      const byUid = draft.uid ? prev.findIndex((line) => line.uid === draft.uid) : -1;
+      const byPanel = prev.findIndex((line) => line.panel === draft.panel);
+      const idx = byUid >= 0 ? byUid : byPanel;
+      let next: Line[];
+      if (idx >= 0) {
+        next = prev.map((line, i) => (i === idx ? { ...line, ...draft, uid: line.uid } : line));
+      } else {
+        const created = makeLine(draft);
+        const blank = prev.findIndex((line) => !line.panel);
+        next =
+          blank >= 0
+            ? prev.map((line, i) => (i === blank ? { ...created, uid: line.uid } : line))
+            : [...prev, created];
+      }
+      return withHagel(next);
+    });
+    setEditingPanel(null);
+    setPanelDraft(null);
+  }
+
+  function removePanel(panel: string) {
+    setLines((prev) => {
+      const next = prev.filter((line) => line.panel !== panel);
+      return withHagel(next.length ? next : [makeLine()]);
+    });
+    setEditingPanel(null);
+    setPanelDraft(null);
   }
 
   function reorder(from: number, to: number) {
@@ -268,7 +348,7 @@ export function EstimateForm({
       includePhotos: fd.get("includePhotos") === "on",
       dismantlingAmount,
       servicePricing,
-      lineItems: lines.map(({ uid: _uid, ...line }, i) => ({
+      lineItems: withHagel(lines).map(({ uid: _uid, ...line }, i) => ({
         ...line,
         pricingMode: "HOURLY",
         fixedAmount: 0,
@@ -291,6 +371,7 @@ export function EstimateForm({
   }
 
   const visibleRates = laborRates.filter((r) => r.active || lines.some((l) => l.laborRateId === r.id));
+  const editingLine = editingPanel ? lines.find((line) => line.panel === editingPanel) : undefined;
 
   return (
     <form
@@ -361,7 +442,7 @@ export function EstimateForm({
           acc[line.panel] = (acc[line.panel] ?? 0) + (Number(line.dentCount) || 0);
           return acc;
         }, {})}
-        onToggle={togglePanel}
+        onToggle={openPanel}
         variant={diagramStyle}
         panelMap={panelMap}
       />
@@ -392,7 +473,7 @@ export function EstimateForm({
             <Plus size={16} /> Ligne
           </Button>
         </div>
-        <table className="table line-table min-w-[860px]">
+        <table className="table line-table min-w-[1100px]">
           <colgroup>
             <col className="w-8" />
             <col />
@@ -400,6 +481,10 @@ export function EstimateForm({
             <col className="w-[8rem]" />
             <col className="w-[5.5rem]" />
             <col className="w-[3.75rem]" />
+            <col className="w-[4.5rem]" />
+            <col className="w-[5.5rem]" />
+            <col className="w-10" />
+            <col className="w-10" />
             <col className="w-[4.25rem]" />
             <col className="w-[4.5rem]" />
             <col className="w-[4.5rem]" />
@@ -415,6 +500,10 @@ export function EstimateForm({
               <th>Méthode</th>
               <th>Sév.</th>
               <th>n°</th>
+              <th>Ø</th>
+              <th>Orient.</th>
+              <th title="Aluminium">Alu</th>
+              <th title="Collage / traction">Col.</th>
               <th>Heures</th>
               <th>Taux</th>
               <th>Pièces</th>
@@ -457,6 +546,7 @@ export function EstimateForm({
                       value={line.panel}
                       title={line.panel || "Pièce"}
                       onChange={(e) => updateLine(i, { panel: e.target.value })}
+                      onDoubleClick={() => line.panel && openPanel(line.panel)}
                     >
                       <option value="">—</option>
                       {panels.map((p) => (
@@ -518,12 +608,61 @@ export function EstimateForm({
                     />
                   </td>
                   <td>
+                    <Select
+                      className="table-select"
+                      value={String(line.dentSize)}
+                      onChange={(e) => updateLine(i, { dentSize: Number(e.target.value) })}
+                    >
+                      {hagelSizeOptions(hagel).map((size) => (
+                        <option key={size} value={size}>
+                          {size}
+                        </option>
+                      ))}
+                    </Select>
+                  </td>
+                  <td>
+                    <Select
+                      className="table-select"
+                      value={line.orientation}
+                      onChange={(e) =>
+                        updateLine(i, { orientation: e.target.value as Line["orientation"] })
+                      }
+                    >
+                      {DENT_ORIENTATIONS.map((item) => (
+                        <option key={item.value} value={item.value}>
+                          {item.value === "HORIZONTAL" ? "H" : "V"}
+                        </option>
+                      ))}
+                    </Select>
+                  </td>
+                  <td className="text-center">
+                    <input
+                      type="checkbox"
+                      checked={line.aluminum}
+                      aria-label="Aluminium"
+                      onChange={(e) => updateLine(i, { aluminum: e.target.checked })}
+                    />
+                  </td>
+                  <td className="text-center">
+                    <input
+                      type="checkbox"
+                      checked={line.glue}
+                      aria-label="Collage"
+                      onChange={(e) => updateLine(i, { glue: e.target.checked })}
+                    />
+                  </td>
+                  <td>
                     <Input
                       type="number"
                       min={0}
                       step="0.1"
                       value={line.laborHours}
-                      onChange={(e) => updateLine(i, { laborHours: Number(e.target.value) })}
+                      readOnly={line.repairMethod === "PDR"}
+                      title={line.repairMethod === "PDR" ? "Heures calculées Hagel Expert" : undefined}
+                      onChange={(e) => {
+                        if (line.repairMethod === "PDR") return;
+                        updateLine(i, { laborHours: Number(e.target.value) });
+                      }}
                       className="table-num"
                     />
                   </td>
@@ -592,7 +731,7 @@ export function EstimateForm({
                       onClick={() =>
                         setLines((l) => {
                           const next = l.filter((_, idx) => idx !== i);
-                          return next.length ? next : [makeLine()];
+                          return withHagel(next.length ? next : [makeLine()]);
                         })
                       }
                     >
@@ -711,6 +850,22 @@ export function EstimateForm({
           Annuler
         </Button>
       </div>
+      {panelDraft && editingPanel ? (
+        <PanelLineDialog
+          open
+          title={editingLine ? `Modifier ${editingPanel}` : `Ajouter ${editingPanel}`}
+          panels={panels}
+          draft={panelDraft}
+          hagel={hagel}
+          extrasWu={extrasForDraft(panelDraft)}
+          onClose={() => {
+            setEditingPanel(null);
+            setPanelDraft(null);
+          }}
+          onSave={savePanel}
+          onRemove={editingLine ? () => removePanel(editingPanel) : undefined}
+        />
+      ) : null}
     </form>
   );
 }

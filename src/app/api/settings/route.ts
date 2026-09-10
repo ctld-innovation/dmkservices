@@ -4,14 +4,18 @@ import { prisma } from "@/lib/prisma";
 import { canAdmin, canWrite, getSession, unauthorized, forbidden, jsonError } from "@/lib/auth";
 import { settingsSchema } from "@/lib/validations";
 import { writeAudit } from "@/lib/audit";
+import { parseHagelExpertConfig } from "@/lib/hagelExpert";
 import type { z } from "zod";
 
 function toPrismaSettingsData(data: Partial<z.infer<typeof settingsSchema>>) {
-  const { carDiagramMaps, ...rest } = data;
+  const { carDiagramMaps, hagelExpert, ...rest } = data;
   return {
     ...rest,
     ...(carDiagramMaps !== undefined
       ? { carDiagramMaps: carDiagramMaps === null ? Prisma.DbNull : carDiagramMaps }
+      : {}),
+    ...(hagelExpert !== undefined
+      ? { hagelExpert: hagelExpert === null ? Prisma.DbNull : hagelExpert }
       : {}),
   };
 }
@@ -34,9 +38,13 @@ export async function PATCH(req: Request) {
   const parsed = settingsSchema.partial().safeParse(body);
   if (!parsed.success) return jsonError(parsed.error.issues[0]?.message ?? "Données invalides");
   const data = { ...parsed.data };
+  if (data.hagelExpert !== undefined) {
+    data.hagelExpert = parseHagelExpertConfig(data.hagelExpert);
+  }
   const keys = Object.keys(data);
   const writerTaxOnly =
-    keys.length > 0 && keys.every((k) => k === "defaultTaxRate" || k === "defaultLaborRate");
+    keys.length > 0 &&
+    keys.every((k) => k === "defaultTaxRate" || k === "defaultLaborRate" || k === "hagelExpert");
   if (!canAdmin(session.role) && !(canWrite(session.role) && writerTaxOnly)) return forbidden();
   if (data.smtpPass === "********") delete (data as { smtpPass?: string }).smtpPass;
   const prismaData = toPrismaSettingsData(data);

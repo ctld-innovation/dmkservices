@@ -199,6 +199,10 @@ model EstimateLineItem {
   repairMethod RepairMethod
   severity     Severity
   dentCount    Int          @default(0)
+  dentSize     Int          @default(20)
+  orientation  String       @default("HORIZONTAL")
+  aluminum     Boolean      @default(false)
+  glue         Boolean      @default(false)
   laborHours   Float        @default(0)
   laborRate    Float
   laborRateId  String?
@@ -243,6 +247,7 @@ model CompanySettings {
   lastEstimateSeq    Int     @default(0)
   carDiagram         String  @default("exploded")
   carDiagramMaps     Json?
+  hagelExpert        Json?
   termsAndConditions String? @db.Text
   smtpHost           String?
   smtpPort           Int?

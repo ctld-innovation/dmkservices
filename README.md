@@ -99,4 +99,75 @@ Export JSON : Paramètres → Sauvegarde (admin)
 - Clients (CRUD, recherche, filtre, CSV)
 - Véhicules (VIN, photos, multi-clients)
 - Devis (lignes dynamiques, totaux, statuts, duplication, PDF, email)
-- Paramètres entreprise, taux, listes de pièces, utilisateurs, journal d'audit
+- Paramètres entreprise, taux, barème Hagel Expert, listes de pièces, utilisateurs, journal d'audit
+
+## Règles de calcul
+
+Les heures PDR d’une ligne de devis sont calculées selon le barème **Hagel Expert** (configurable dans Paramètres → Hagel Expert). Les méthodes conventionnelle et remplacement restent en heures saisies manuellement.
+
+### Heures PDR (Hagel Expert)
+
+Pour chaque ligne PDR avec au moins une bosse :
+
+1. Lecture de la table AW selon le nombre de bosses, l’orientation (horizontale / verticale) et le diamètre (Ø 10–80 mm). Le nombre de bosses est plafonné (250 en horizontal, 50 en vertical par défaut).
+2. Conversion teiler :
+
+   ```
+   AW_base = arrondi( (AW_table + AW de base / panneau) × teiler / 10 )
+   ```
+
+   Le teiler (`wuPerHour`) vaut 10 (10er) ou 12 (12er).
+3. Majorations optionnelles, appliquées dans cet ordre :
+
+   ```
+   si aluminium  → AW = arrondi(AW × (1 + % alu / 100))
+   si collage    → AW = arrondi(AW × (1 + % collage / 100))
+   ```
+
+4. Finish par panneau (scalé au teiler) :
+
+   ```
+   AW += arrondi(finish / panneau × teiler / 10)
+   ```
+
+5. Sur la **première** ligne PDR du devis uniquement (Rüstzeit + finish véhicule) :
+
+   ```
+   AW += arrondi( (Rüstzeit + finish véhicule) × teiler / 10 )
+   ```
+
+6. Conversion en heures (2 décimales) :
+
+   ```
+   heures = AW / teiler
+   ```
+
+Valeurs par défaut du barème :
+
+| Paramètre | Défaut | Rôle |
+| --- | --- | --- |
+| Teiler (AW / heure) | 10 | 10er = 10 AW/h, 12er = 12 AW/h |
+| AW de base / panneau | 4 | Ajouté à la valeur lue dans la table |
+| Finish / panneau | 2,5 AW | Ajouté à chaque ligne PDR |
+| Rüstzeit véhicule | 6 AW | Une fois, sur la 1re ligne PDR |
+| Finish véhicule | 13 AW | Une fois, sur la 1re ligne PDR |
+| Aluminium | +25 % | Si la pièce est en alu |
+| Collage / traction | +25 % | Si réparation par collage |
+
+Exemple : 1 bosse, Ø 20 mm, horizontale, teiler 10 → table 2 + base 4 = 6 AW, + finish 3, + extras véhicule 19 → **28 AW = 2,8 h**.
+
+Le calcul est appliqué à l’ouverture / validation de la popup panneau, à chaque modification des champs Hagel dans le tableau, et à l’enregistrement du devis (API).
+
+### Montants du devis
+
+- **Ligne horaire** : `(heures × taux) + pièces + peinture`. Le taux peut être remisé selon le % client (la remise s’applique au taux, pas au forfait).
+- **Forfait par méthode** (PDR / Conventionnel / Remplacement) : si la méthode est en forfait, les lignes de cette méthode ne sont pas additionnées ; le montant forfaitaire paramétré sur le devis est utilisé.
+- **Dégarnissage / montage** : montant saisi sur le devis, ajouté au sous-total.
+- **TVA** : `sous-total × taux / 100` (taux par défaut dans Paramètres → Taux).
+- **Total TTC** : sous-total + TVA.
+
+```
+sous-total = PDR + Conventionnel + Remplacement + peintures + dégarnissage
+TVA        = sous-total × taux_TVA / 100
+TTC        = sous-total + TVA
+```

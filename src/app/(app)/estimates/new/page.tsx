@@ -42,6 +42,7 @@ export default async function NewEstimatePage({
           resolveCarDiagram(settings.carDiagram),
           panels,
         )}
+        hagelExpert={settings.hagelExpert}
         initial={{
           clientId: sp.clientId,
           vehicleId: sp.vehicleId,

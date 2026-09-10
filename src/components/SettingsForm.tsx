@@ -203,6 +203,13 @@ export function SettingsForm({
         >
           Taux horaires
         </button>
+        <button
+          type="button"
+          className="btn btn-ghost"
+          onClick={() => router.push("/settings/hagel")}
+        >
+          Hagel Expert
+        </button>
       </div>
 
       {tab === "company" ? (
@@ -237,6 +244,9 @@ export function SettingsForm({
               <input type="hidden" name="defaultLaborRate" value={settings.defaultLaborRate} />
               <Link href="/settings/rates" className="btn btn-ghost mt-1">
                 Configurer les taux horaires et la TVA ({settings.defaultLaborRate} €/h · {settings.defaultTaxRate} %)
+              </Link>
+              <Link href="/settings/hagel" className="btn btn-ghost mt-1">
+                Configurer le barème Hagel Expert
               </Link>
             </div>
             <Field label="Préfixe des devis">

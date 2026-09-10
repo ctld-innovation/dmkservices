@@ -437,7 +437,7 @@ export function CarPanelPicker({
           <h2 className="font-semibold text-navy">
             {diagram === "exploded" ? "Éclaté véhicule" : "Silhouette véhicule"}
           </h2>
-          <p className="text-xs text-slate-500">Cliquez les panneaux bosselés — recliquer pour retirer.</p>
+          <p className="text-xs text-slate-500">Cliquez un panneau pour renseigner les bosses, puis validez pour mettre à jour le tableau.</p>
         </div>
         <div className="text-xs font-medium text-navy">
           {selected.length} panneau{selected.length > 1 ? "x" : ""}
@@ -473,7 +473,7 @@ export function CarPanelPicker({
                     type="button"
                     onClick={() => onToggle(name)}
                     className="badge badge-amber cursor-pointer"
-                    title="Retirer"
+                    title="Ouvrir"
                   >
                     {name}
                     {dentCounts[name] ? ` · ${dentCounts[name]}` : ""}

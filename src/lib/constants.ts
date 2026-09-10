@@ -44,6 +44,11 @@ export const SEVERITIES = [
   { value: "HEAVY", label: "Fort" },
 ] as const;
 
+export const DENT_ORIENTATIONS = [
+  { value: "HORIZONTAL", label: "Horizontale" },
+  { value: "VERTICAL", label: "Verticale" },
+] as const;
+
 export const ROLES = [
   { value: "ADMIN", label: "Administrateur" },
   { value: "ESTIMATOR", label: "Estimateur" },

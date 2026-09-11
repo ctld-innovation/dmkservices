@@ -47,7 +47,7 @@ export const lineItemSchema = z.object({
   panel: z.string().min(1),
   damageType: z.enum(["DENT", "SCRATCH", "CRACK", "PAINT_DAMAGE"]),
   repairMethod: z.enum(["PDR", "CONVENTIONAL", "PANEL_REPLACEMENT"]),
-  severity: z.enum(["LIGHT", "MEDIUM", "HEAVY"]),
+  severity: z.enum(["LIGHT", "MEDIUM", "HEAVY"]).optional().default("LIGHT"),
   dentCount: z.number().int().min(0).default(0),
   dentSize: z.number().int().min(0).optional().default(20),
   orientation: z.enum(["HORIZONTAL", "VERTICAL"]).optional().default("HORIZONTAL"),

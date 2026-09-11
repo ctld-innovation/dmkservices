@@ -7,7 +7,6 @@ import {
   DAMAGE_TYPES,
   ESTIMATE_STATUSES,
   REPAIR_METHODS,
-  SEVERITIES,
   STATUS_COLORS,
   labelOf,
 } from "@/lib/constants";
@@ -102,7 +101,7 @@ export default async function EstimateDetailPage({ params }: { params: Promise<{
               <th>Pièce</th>
               <th>Dommage</th>
               <th>Méthode</th>
-              <th>Sévérité</th>
+              <th>Taille</th>
               <th>Bosses</th>
               <th>Heures</th>
               <th>Taux</th>
@@ -117,7 +116,7 @@ export default async function EstimateDetailPage({ params }: { params: Promise<{
                 <td>{line.panel}</td>
                 <td>{labelOf(DAMAGE_TYPES, line.damageType)}</td>
                 <td>{labelOf(REPAIR_METHODS, line.repairMethod)}</td>
-                <td>{labelOf(SEVERITIES, line.severity)}</td>
+                <td>{line.dentSize ? `${line.dentSize} mm` : "—"}</td>
                 <td>{line.dentCount}</td>
                 <td>{line.laborHours}</td>
                 <td>{formatCurrency(line.laborRate)}</td>

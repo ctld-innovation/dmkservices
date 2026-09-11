@@ -174,18 +174,20 @@ export function PanelLineDialog({
               </p>
             ) : null}
           </Field>
-          <label className="flex items-center gap-2 text-sm text-navy">
-            <input
-              type="checkbox"
-              checked={form.aluminum}
-              onChange={(e) => patch({ aluminum: e.target.checked })}
-            />
-            Aluminium (+{hagel.aluminumPercent} %)
-          </label>
-          <label className="flex items-center gap-2 text-sm text-navy">
-            <input type="checkbox" checked={form.glue} onChange={(e) => patch({ glue: e.target.checked })} />
-            Collage / traction (+{hagel.gluePercent} %)
-          </label>
+          <div className="grid grid-cols-2 items-center gap-4 sm:col-span-2">
+            <label className="flex items-center gap-2 text-sm text-navy">
+              <input
+                type="checkbox"
+                checked={form.aluminum}
+                onChange={(e) => patch({ aluminum: e.target.checked })}
+              />
+              Aluminium (+{hagel.aluminumPercent} %)
+            </label>
+            <label className="flex items-center gap-2 text-sm text-navy">
+              <input type="checkbox" checked={form.glue} onChange={(e) => patch({ glue: e.target.checked })} />
+              Collage / traction (+{hagel.gluePercent} %)
+            </label>
+          </div>
           <Field label="Pièces (€)">
             <Input
               type="number"

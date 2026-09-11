@@ -485,7 +485,7 @@ export function EstimateForm({
             <col className="w-[7.5rem]" />
             <col className="w-[8rem]" />
             <col className="w-[3.75rem]" />
-            <col className="w-[4.5rem]" />
+            <col className="w-[6.5rem]" />
             <col className="w-[5.5rem]" />
             <col className="w-10" />
             <col className="w-10" />
@@ -502,8 +502,8 @@ export function EstimateForm({
               <th>Pièce</th>
               <th>Type</th>
               <th>Méthode</th>
-              <th>n°</th>
-              <th>Ø</th>
+              <th>Nb</th>
+              <th>Taille mm</th>
               <th>Orient.</th>
               <th title="Aluminium">Alu</th>
               <th title="Collage / traction">Col.</th>

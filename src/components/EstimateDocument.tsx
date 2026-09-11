@@ -2,7 +2,7 @@ import type { CompanySettings, Estimate, EstimateLineItem, Client, Vehicle, User
 import { computeEstimateTotals, isMethodFixed } from "@/lib/calculations";
 import { EstimateTotalsPanels } from "@/components/EstimateTotalsPanels";
 import { clientLabel, formatCurrency, formatDate, fullName } from "@/lib/utils";
-import { DAMAGE_TYPES, REPAIR_METHODS, SEVERITIES, labelOf } from "@/lib/constants";
+import { DAMAGE_TYPES, REPAIR_METHODS, labelOf } from "@/lib/constants";
 import { CarDiagramSvg } from "@/components/CarPanelPicker";
 import { resolveDiagramPanelMap } from "@/lib/diagram";
 
@@ -105,7 +105,7 @@ export function EstimateDocument({
       <table className="w-full border-collapse text-[10px]">
         <thead>
           <tr className="bg-amber text-navy">
-            {["Pièce", "Dommage", "Méthode", "Sévérité", "Bosses", "Heures", "Taux", "Pièces", "Peinture", "Total"].map(
+            {["Pièce", "Dommage", "Méthode", "Taille", "Bosses", "Heures", "Taux", "Pièces", "Peinture", "Total"].map(
               (h) => (
                 <th key={h} className="px-1.5 py-1.5 text-left font-bold">
                   {h}
@@ -123,7 +123,7 @@ export function EstimateDocument({
                 <td className="px-1.5 py-1">{line.panel}</td>
                 <td className="px-1.5 py-1">{labelOf(DAMAGE_TYPES, line.damageType)}</td>
                 <td className="px-1.5 py-1">{labelOf(REPAIR_METHODS, line.repairMethod)}</td>
-                <td className="px-1.5 py-1">{labelOf(SEVERITIES, line.severity)}</td>
+                <td className="px-1.5 py-1">{line.dentSize ? `${line.dentSize} mm` : "—"}</td>
                 <td className="px-1.5 py-1 text-right">{line.dentCount || ""}</td>
                 <td className="px-1.5 py-1 text-right">{Number(line.laborHours).toFixed(1)}</td>
                 <td className="px-1.5 py-1 text-right">{formatCurrency(line.laborRate)}</td>

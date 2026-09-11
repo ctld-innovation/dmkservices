@@ -8,7 +8,6 @@ import {
   DENT_ORIENTATIONS,
   ESTIMATE_STATUSES,
   REPAIR_METHODS,
-  SEVERITIES,
 } from "@/lib/constants";
 import { computeLineTotal, computeEstimateTotals, applyHourlyDiscount, parseServicePricing, isMethodFixed, SERVICE_KEYS, SERVICE_LABELS, type ServicePricing } from "@/lib/calculations";
 import { formatCurrency, toInputDate, cn } from "@/lib/utils";
@@ -119,7 +118,13 @@ export function EstimateForm({
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [clientId, setClientId] = useState(initial?.clientId ?? "");
-  const [vehicleId, setVehicleId] = useState(initial?.vehicleId ?? "");
+  function firstVehicleIdFor(cid: string) {
+    if (!cid) return "";
+    return vehicles.find((v) => v.clients.some((c) => c.clientId === cid))?.id ?? "";
+  }
+  const [vehicleId, setVehicleId] = useState(
+    initial?.vehicleId || firstVehicleIdFor(initial?.clientId ?? "") || "",
+  );
   const vat = taxRate;
   const [applyDiscount, setApplyDiscount] = useState(true);
   const [dismantlingAmount, setDismantlingAmount] = useState(Number(initial?.dismantlingAmount) || 0);
@@ -405,7 +410,7 @@ export function EstimateForm({
               const nextId = e.target.value;
               const nextDiscount = Number(clients.find((c) => c.id === nextId)?.discountPercent) || 0;
               setClientId(nextId);
-              setVehicleId("");
+              setVehicleId(firstVehicleIdFor(nextId));
               setApplyDiscount(true);
               setLines((prev) => repriceLines(prev, nextDiscount));
             }}
@@ -479,7 +484,6 @@ export function EstimateForm({
             <col />
             <col className="w-[7.5rem]" />
             <col className="w-[8rem]" />
-            <col className="w-[5.5rem]" />
             <col className="w-[3.75rem]" />
             <col className="w-[4.5rem]" />
             <col className="w-[5.5rem]" />
@@ -498,7 +502,6 @@ export function EstimateForm({
               <th>Pièce</th>
               <th>Type</th>
               <th>Méthode</th>
-              <th>Sév.</th>
               <th>n°</th>
               <th>Ø</th>
               <th>Orient.</th>
@@ -581,19 +584,6 @@ export function EstimateForm({
                       {REPAIR_METHODS.map((d) => (
                         <option key={d.value} value={d.value}>
                           {METHOD_SHORT[d.value]}
-                        </option>
-                      ))}
-                    </Select>
-                  </td>
-                  <td>
-                    <Select
-                      className="table-select"
-                      value={line.severity}
-                      onChange={(e) => updateLine(i, { severity: e.target.value as Line["severity"] })}
-                    >
-                      {SEVERITIES.map((d) => (
-                        <option key={d.value} value={d.value}>
-                          {d.label}
                         </option>
                       ))}
                     </Select>

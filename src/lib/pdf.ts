@@ -5,7 +5,7 @@ import path from "path";
 import type { Estimate, EstimateLineItem, Client, Vehicle, User, CompanySettings, VehiclePhoto } from "@prisma/client";
 import { computeEstimateTotals, isMethodFixed, serviceTotalRows } from "./calculations";
 import { formatDate, clientLabel, fullName } from "./utils";
-import { DAMAGE_TYPES, REPAIR_METHODS, SEVERITIES, labelOf } from "./constants";
+import { DAMAGE_TYPES, REPAIR_METHODS, labelOf } from "./constants";
 import {
   EXPLODED_PANEL_SHAPES,
   EXPLODED_VIEW,
@@ -256,7 +256,7 @@ export async function buildEstimatePdf(
       line.panel,
       labelOf(DAMAGE_TYPES, line.damageType),
       labelOf(REPAIR_METHODS, line.repairMethod),
-      labelOf(SEVERITIES, line.severity),
+      line.dentSize ? `${line.dentSize} mm` : "—",
       String(line.dentCount || ""),
       Number(line.laborHours).toFixed(1),
       formatPdfCurrency(line.laborRate),
@@ -271,7 +271,7 @@ export async function buildEstimatePdf(
       "Pièce",
       "Dommage",
       "Méthode",
-      "Sévérité",
+      "Taille",
       "Bosses",
       "Heures",
       "Taux",

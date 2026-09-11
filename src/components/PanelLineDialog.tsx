@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { DAMAGE_TYPES, DENT_ORIENTATIONS, REPAIR_METHODS, SEVERITIES } from "@/lib/constants";
+import { DAMAGE_TYPES, DENT_ORIENTATIONS, REPAIR_METHODS } from "@/lib/constants";
 import { computeHagelHours, computeHagelWorkUnits, hagelSizeOptions, type HagelExpertConfig } from "@/lib/hagelExpert";
 import { Button, Field, Input, Select } from "@/components/ui";
 
@@ -120,18 +120,6 @@ export function PanelLineDialog({
               onChange={(e) => patch({ repairMethod: e.target.value as PanelLineDraft["repairMethod"] })}
             >
               {REPAIR_METHODS.map((item) => (
-                <option key={item.value} value={item.value}>
-                  {item.label}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="Sévérité">
-            <Select
-              value={form.severity}
-              onChange={(e) => patch({ severity: e.target.value as PanelLineDraft["severity"] })}
-            >
-              {SEVERITIES.map((item) => (
                 <option key={item.value} value={item.value}>
                   {item.label}
                 </option>

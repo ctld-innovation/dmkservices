@@ -27,8 +27,10 @@ export const vehicleSchema = z.object({
   licensePlate: z.string().min(1, "Immatriculation requise"),
   vin: z
     .string()
-    .min(1, "VIN requis")
-    .refine((v) => isValidVin(v), "VIN invalide (17 caractères, sans I/O/Q)"),
+    .optional()
+    .default("")
+    .transform((v) => v.trim().toUpperCase())
+    .refine((v) => v === "" || isValidVin(v), "VIN invalide (17 caractères, sans I/O/Q)"),
   brand: z.string().min(1, "Marque requise"),
   model: z.string().min(1, "Modèle requis"),
   year: z.number().int().min(1950).max(2100).optional().nullable(),
@@ -53,6 +55,9 @@ export const lineItemSchema = z.object({
   orientation: z.enum(["HORIZONTAL", "VERTICAL"]).optional().default("HORIZONTAL"),
   aluminum: z.boolean().optional().default(false),
   glue: z.boolean().optional().default(false),
+  dap: z.boolean().optional().default(false),
+  paintReserve: z.boolean().optional().default(false),
+  extraWu: z.number().min(0).optional().default(0),
   laborHours: z.number().min(0).default(0),
   laborRate: z.number().min(0).default(0),
   laborRateId: z.string().optional().nullable(),
@@ -81,6 +86,8 @@ export const estimateSchema = z.object({
   clientNotes: z.string().optional().nullable(),
   includePhotos: z.boolean().optional(),
   dismantlingAmount: z.number().min(0).optional().default(0),
+  applyVehiclePrep: z.boolean().optional().default(false),
+  applyVehicleFinish: z.boolean().optional().default(false),
   servicePricing: z
     .object({
       PDR: serviceQuoteSchema.optional(),

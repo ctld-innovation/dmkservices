@@ -1,12 +1,22 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { FUEL_TYPES, VEHICLE_LINK_ROLES } from "@/lib/constants";
 import { isValidVin, toInputDate } from "@/lib/utils";
+import { lookupsToOptions } from "@/lib/vehicleCatalog";
 import { Button, ErrorText, Field, Input, Select, Textarea } from "@/components/ui";
+import { SearchCombo } from "@/components/SearchCombo";
 
 export type VehicleFormClient = { id: string; companyName?: string | null; firstName: string; lastName: string };
+
+export type SavedVehicle = {
+  id: string;
+  brand: string;
+  model: string;
+  licensePlate: string;
+  clients: Array<{ clientId: string }>;
+};
 
 export function VehicleForm({
   clients,
@@ -15,6 +25,7 @@ export function VehicleForm({
   lockToClientId,
   redirectTo,
   onCancel,
+  onSaved,
   compact,
 }: {
   clients: VehicleFormClient[];
@@ -22,6 +33,7 @@ export function VehicleForm({
   lockToClientId?: string;
   redirectTo?: string;
   onCancel?: () => void;
+  onSaved?: (vehicle: SavedVehicle) => void;
   compact?: boolean;
   initial?: {
     licensePlate?: string;
@@ -41,6 +53,12 @@ export function VehicleForm({
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [vin, setVin] = useState(initial?.vin ?? "");
+  const [brand, setBrand] = useState(initial?.brand ?? "");
+  const [model, setModel] = useState(initial?.model ?? "");
+  const [brands, setBrands] = useState<string[]>(initial?.brand ? [initial.brand] : []);
+  const [models, setModels] = useState<Array<{ brand: string; label: string }>>(
+    initial?.model ? [{ brand: initial.brand ?? "", label: initial.model }] : [],
+  );
   const presetLinks = initial?.links ?? (lockToClientId ? [{ clientId: lockToClientId, role: "OWNER" }] : []);
   const [selected, setSelected] = useState<string[]>(presetLinks.map((l) => l.clientId));
   const [roles, setRoles] = useState<Record<string, string>>(
@@ -49,11 +67,44 @@ export function VehicleForm({
 
   const vinOk = !vin || isValidVin(vin);
   const clientOptions = useMemo(() => clients, [clients]);
+  const modelOptions = useMemo(() => {
+    const forBrand = models
+      .filter((item) => !brand || item.brand.toLowerCase() === brand.trim().toLowerCase())
+      .map((item) => item.label);
+    const unique = [...new Set(forBrand.length ? forBrand : models.map((item) => item.label))];
+    return unique.sort((a, b) => a.localeCompare(b, "fr"));
+  }, [models, brand]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/lookups")
+      .then((res) => res.json())
+      .then((items) => {
+        if (cancelled || !Array.isArray(items)) return;
+        const options = lookupsToOptions(items);
+        setBrands((prev) => [...new Set([...options.brands, ...prev])].sort((a, b) => a.localeCompare(b, "fr")));
+        setModels((prev) => {
+          const keys = new Set(options.models.map((item) => `${item.brand}::${item.label}`));
+          return [
+            ...options.models,
+            ...prev.filter((item) => !keys.has(`${item.brand}::${item.label}`)),
+          ];
+        });
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!isValidVin(vin)) {
+    if (vin && !isValidVin(vin)) {
       setError("VIN invalide (17 caractères, sans I, O ni Q)");
+      return;
+    }
+    if (!brand.trim() || !model.trim()) {
+      setError("Marque et modèle sont requis");
       return;
     }
     if (!selected.length) {
@@ -66,8 +117,8 @@ export function VehicleForm({
     const payload = {
       licensePlate: form.get("licensePlate"),
       vin,
-      brand: form.get("brand"),
-      model: form.get("model"),
+      brand: brand.trim(),
+      model: model.trim(),
       year: form.get("year") ? Number(form.get("year")) : null,
       firstRegistration: form.get("firstRegistration") || null,
       color: form.get("color"),
@@ -88,6 +139,18 @@ export function VehicleForm({
       setError(data.error || "Enregistrement impossible");
       return;
     }
+    if (onSaved) {
+      onSaved({
+        id: data.id,
+        brand: data.brand,
+        model: data.model,
+        licensePlate: data.licensePlate,
+        clients: Array.isArray(data.clients)
+          ? data.clients.map((link: { clientId: string }) => ({ clientId: link.clientId }))
+          : selected.map((clientId) => ({ clientId })),
+      });
+      return;
+    }
     router.push(redirectTo || `/vehicles/${data.id}`);
     router.refresh();
   }
@@ -97,7 +160,7 @@ export function VehicleForm({
       return;
     }
     setSelected((prev) =>
-      prev.includes(clientId) ? prev.filter((id) => id !== clientId) : [...prev, clientId],
+      prev.includes(clientId) ? prev.filter((item) => item !== clientId) : [...prev, clientId],
     );
     setRoles((prev) => ({ ...prev, [clientId]: prev[clientId] || "OWNER" }));
   }
@@ -108,20 +171,19 @@ export function VehicleForm({
         <Field label="Immatriculation">
           <Input name="licensePlate" required defaultValue={initial?.licensePlate ?? ""} className="uppercase" />
         </Field>
-        <Field label="VIN (17 caractères)" hint={!vinOk ? "Format VIN invalide" : undefined}>
+        <Field label="VIN" hint={!vinOk ? "Format VIN invalide (17 caractères, sans I, O ni Q)" : "Optionnel"}>
           <Input
             value={vin}
             onChange={(e) => setVin(e.target.value.toUpperCase())}
             maxLength={17}
-            required
             className={!vinOk ? "border-red-400" : ""}
           />
         </Field>
         <Field label="Marque">
-          <Input name="brand" required defaultValue={initial?.brand ?? ""} />
+          <SearchCombo value={brand} onChange={setBrand} options={brands} required placeholder="Rechercher une marque…" />
         </Field>
         <Field label="Modèle">
-          <Input name="model" required defaultValue={initial?.model ?? ""} />
+          <SearchCombo value={model} onChange={setModel} options={modelOptions} required placeholder="Rechercher un modèle…" />
         </Field>
         <Field label="Année">
           <Input name="year" type="number" defaultValue={initial?.year ?? ""} />
@@ -153,41 +215,43 @@ export function VehicleForm({
       <Field label="Notes">
         <Textarea name="notes" defaultValue={initial?.notes ?? ""} />
       </Field>
-      <div>
-        <div className="label">Clients liés (propriétaire, assurance…)</div>
-        <div className="max-h-56 space-y-2 overflow-auto rounded-xl border border-line p-3">
-          {clientOptions.map((c) => {
-            const checked = selected.includes(c.id);
-            return (
-              <div key={c.id} className="flex flex-wrap items-center gap-3">
-                <label className="flex flex-1 items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    disabled={lockToClientId === c.id}
-                    onChange={() => toggleClient(c.id)}
-                  />
-                  {c.companyName ? `${c.companyName} — ` : ""}
-                  {c.firstName} {c.lastName}
-                </label>
-                {checked ? (
-                  <Select
-                    value={roles[c.id] || "OWNER"}
-                    onChange={(e) => setRoles((r) => ({ ...r, [c.id]: e.target.value }))}
-                    className="w-44"
-                  >
-                    {VEHICLE_LINK_ROLES.map((r) => (
-                      <option key={r.value} value={r.value}>
-                        {r.label}
-                      </option>
-                    ))}
-                  </Select>
-                ) : null}
-              </div>
-            );
-          })}
+      {lockToClientId && compact ? null : (
+        <div>
+          <div className="label">Clients liés (propriétaire, assurance…)</div>
+          <div className="max-h-56 space-y-2 overflow-auto rounded-xl border border-line p-3">
+            {clientOptions.map((c) => {
+              const checked = selected.includes(c.id);
+              return (
+                <div key={c.id} className="flex flex-wrap items-center gap-3">
+                  <label className="flex flex-1 items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      disabled={lockToClientId === c.id}
+                      onChange={() => toggleClient(c.id)}
+                    />
+                    {c.companyName ? `${c.companyName} — ` : ""}
+                    {c.firstName} {c.lastName}
+                  </label>
+                  {checked ? (
+                    <Select
+                      value={roles[c.id] || "OWNER"}
+                      onChange={(e) => setRoles((r) => ({ ...r, [c.id]: e.target.value }))}
+                      className="w-44"
+                    >
+                      {VEHICLE_LINK_ROLES.map((r) => (
+                        <option key={r.value} value={r.value}>
+                          {r.label}
+                        </option>
+                      ))}
+                    </Select>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
         </div>
-      </div>
+      )}
       <ErrorText message={error} />
       <div className="flex gap-2">
         <Button type="submit" disabled={loading}>

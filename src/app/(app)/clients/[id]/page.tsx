@@ -43,7 +43,12 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
             <Link href={`/clients/${id}/edit`} className="btn btn-ghost">
               Modifier
             </Link>
-            <DeleteButton url={`/api/clients/${id}`} redirectTo="/clients" />
+            <DeleteButton
+              url={`/api/clients/${id}`}
+              redirectTo="/clients"
+              title="Supprimer ce client ?"
+              message="Le client et ses liaisons véhicules seront retirés. Impossible s’il est lié à des devis."
+            />
           </WriteOnly>
         }
       />
@@ -115,7 +120,7 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
                         {vehicleLabel(link.vehicle)}
                       </Link>
                     </td>
-                    <td className="font-mono text-xs">{link.vehicle.vin}</td>
+                    <td className="font-mono text-xs">{link.vehicle.vin || "—"}</td>
                     <td>{labelOf(VEHICLE_LINK_ROLES, link.role)}</td>
                     <td>
                       <WriteOnly canWrite={writable}>

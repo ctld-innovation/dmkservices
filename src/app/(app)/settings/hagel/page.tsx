@@ -16,7 +16,7 @@ export default async function HagelExpertSettingsPage() {
     <div>
       <PageHeader
         title="Hagel Expert"
-        subtitle="Barème AW, teiler et majorations utilisés pour calculer chaque ligne de devis"
+        subtitle="Barème UT, teiler, majorations et réduction DAP utilisés pour calculer chaque ligne de devis"
         actions={
           <Link href="/settings" className="btn btn-ghost">
             Retour aux paramètres

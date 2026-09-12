@@ -16,19 +16,15 @@ export type ServiceQuote = { mode: "HOURLY" | "FIXED"; amount: number };
 export type ServicePricing = Record<RepairMethodKey, ServiceQuote>;
 
 export const SERVICE_KEYS: RepairMethodKey[] = ["PDR", "CONVENTIONAL", "PANEL_REPLACEMENT"];
+export const FORFAIT_SERVICE_KEYS: RepairMethodKey[] = ["PDR"];
 
 export const SERVICE_LABELS: Record<RepairMethodKey | "paint" | "dismantling", string> = {
-  PDR: "PDR",
+  PDR: "DSP",
   CONVENTIONAL: "Conventionnel",
   PANEL_REPLACEMENT: "Remplacement",
   paint: "Peintures",
   dismantling: "Dégarnissage",
 };
-
-export function applyHourlyDiscount(baseRate: number, discountPercent: number) {
-  const pct = Math.min(100, Math.max(0, Number(discountPercent) || 0));
-  return round2((Number(baseRate) || 0) * (1 - pct / 100));
-}
 
 export function defaultServicePricing(): ServicePricing {
   return {
@@ -127,11 +123,35 @@ export function computeEstimateTotals(estimate: {
   };
 }
 
+export const METHOD_FLAG_COLUMNS = ["DSP", "DAP", "ALU", "COL", "RP"] as const;
+
+export function estimateLineMethodFlags(line: {
+  repairMethod?: string | null;
+  dap?: boolean | null;
+  aluminum?: boolean | null;
+  glue?: boolean | null;
+  paintReserve?: boolean | null;
+}): Record<(typeof METHOD_FLAG_COLUMNS)[number], boolean> {
+  return {
+    DSP: line.repairMethod === "PDR",
+    DAP: Boolean(line.dap),
+    ALU: Boolean(line.aluminum),
+    COL: Boolean(line.glue),
+    RP: Boolean(line.paintReserve),
+  };
+}
+
+export function methodFlagMark(on: boolean) {
+  return on ? "X" : "";
+}
+
 export function serviceTotalRows(totals: EstimateTotals, includeDismantlingIfZero = false) {
-  const rows: Array<{ label: string; value: number }> = SERVICE_KEYS.map((key) => ({
-    label: SERVICE_LABELS[key],
-    value: totals.services[key],
-  }));
+  const rows: Array<{ label: string; value: number }> = [
+    { label: SERVICE_LABELS.PDR, value: totals.services.PDR },
+  ];
+  if (totals.services.PANEL_REPLACEMENT > 0) {
+    rows.push({ label: SERVICE_LABELS.PANEL_REPLACEMENT, value: totals.services.PANEL_REPLACEMENT });
+  }
   rows.push({ label: SERVICE_LABELS.paint, value: totals.services.paint });
   if (includeDismantlingIfZero || totals.services.dismantling > 0) {
     rows.push({ label: SERVICE_LABELS.dismantling, value: totals.services.dismantling });

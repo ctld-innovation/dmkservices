@@ -1,5 +1,6 @@
 import { PrismaClient, type ClientType, type EstimateStatus, type FuelType } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { VEHICLE_CATALOG } from "../src/lib/vehicleCatalog";
 
 const prisma = new PrismaClient();
 
@@ -105,6 +106,22 @@ async function main() {
       sortOrder: i,
     })),
   });
+
+  const brandRows = Object.keys(VEHICLE_CATALOG).map((brand, i) => ({
+    category: "BRAND",
+    label: brand,
+    value: brand,
+    sortOrder: i,
+  }));
+  const modelRows = Object.entries(VEHICLE_CATALOG).flatMap(([brand, models], brandIndex) =>
+    models.map((model, i) => ({
+      category: "MODEL",
+      label: model,
+      value: brand,
+      sortOrder: brandIndex * 100 + i,
+    })),
+  );
+  await prisma.lookupValue.createMany({ data: [...brandRows, ...modelRows] });
 
   const clientsData: Array<{
     type: ClientType;

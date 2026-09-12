@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { canWrite, getSession, unauthorized, forbidden, jsonError } from "@/lib/auth";
 import { vehicleSchema } from "@/lib/validations";
 import { writeAudit } from "@/lib/audit";
+import { ensureBrandModelLookups } from "@/lib/vehicleLookups";
 
 export async function GET(
   _req: Request,
@@ -38,6 +39,7 @@ export async function PATCH(
   const parsed = vehicleSchema.safeParse(body);
   if (!parsed.success) return jsonError(parsed.error.issues[0]?.message ?? "Données invalides");
   const { clientIds, clientRoles, firstRegistration, vin, ...rest } = parsed.data;
+  await ensureBrandModelLookups(rest.brand, rest.model);
 
   const vehicle = await prisma.$transaction(async (tx) => {
     await tx.clientVehicle.deleteMany({ where: { vehicleId: id } });

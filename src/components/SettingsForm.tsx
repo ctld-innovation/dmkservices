@@ -6,6 +6,7 @@ import type { CompanySettings, LookupValue, Role } from "@prisma/client";
 import { ROLES, resolveCarDiagram, type CarDiagram } from "@/lib/constants";
 import { Button, ErrorText, Field, Input, Select, Textarea } from "@/components/ui";
 import { DiagramMappingEditor } from "@/components/DiagramMappingEditor";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import type { DiagramMaps } from "@/lib/diagram";
 import Link from "next/link";
 
@@ -46,6 +47,8 @@ export function SettingsForm({
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
   const [panelLabel, setPanelLabel] = useState("");
+  const [pendingLookupId, setPendingLookupId] = useState<string | null>(null);
+  const [deletingLookup, setDeletingLookup] = useState(false);
 
   async function saveCompany(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -157,12 +160,16 @@ export function SettingsForm({
     }
   }
 
-  async function removeLookup(id: string) {
+  async function removeLookup() {
+    if (!pendingLookupId) return;
+    setDeletingLookup(true);
     await fetch("/api/lookups", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id }),
+      body: JSON.stringify({ id: pendingLookupId }),
     });
+    setDeletingLookup(false);
+    setPendingLookupId(null);
     router.refresh();
   }
 
@@ -316,7 +323,7 @@ export function SettingsForm({
                 <li key={l.id} className="mb-1 flex items-center justify-between gap-2 break-inside-avoid">
                   <span>{l.label}</span>
                   {isAdmin ? (
-                    <button type="button" className="text-xs text-red-600" onClick={() => removeLookup(l.id)}>
+                    <button type="button" className="text-xs text-red-600" onClick={() => setPendingLookupId(l.id)}>
                       Retirer
                     </button>
                   ) : null}
@@ -324,7 +331,9 @@ export function SettingsForm({
               ))}
           </ul>
           <p className="mt-4 text-sm text-slate-500">
-            Méthodes de réparation prédéfinies : PDR, réparation conventionnelle, remplacement de pièce.
+            Méthodes de réparation prédéfinies : DSP, remplacement de pièce. Les listes de marques et modèles
+            automobiles sont proposées à la création d’un véhicule et s’enrichissent si vous saisissez un nom
+            inexistant.
           </p>
           <DiagramMappingEditor
             initialDiagram={resolveCarDiagram(settings.carDiagram)}
@@ -455,6 +464,15 @@ export function SettingsForm({
           )}
         </div>
       ) : null}
+      <ConfirmDialog
+        open={Boolean(pendingLookupId)}
+        title="Retirer cette pièce ?"
+        message="Elle disparaîtra des listes utilisées pour les devis."
+        busy={deletingLookup}
+        confirmLabel="Retirer"
+        onCancel={() => !deletingLookup && setPendingLookupId(null)}
+        onConfirm={() => void removeLookup()}
+      />
     </div>
   );
 }

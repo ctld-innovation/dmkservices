@@ -24,7 +24,11 @@ export async function POST(
   if (!source) return jsonError("Devis introuvable", 404);
 
   const number = await nextEstimateNumber();
-  const hagelLines = applyHagelHoursToLines(source.lineItems, parseHagelExpertConfig(settings?.hagelExpert));
+  const hagelLines = applyHagelHoursToLines(
+    source.lineItems,
+    parseHagelExpertConfig(settings?.hagelExpert),
+    { preparation: source.applyVehiclePrep, finish: source.applyVehicleFinish },
+  );
   const copy = await prisma.estimate.create({
     data: {
       number,
@@ -41,6 +45,8 @@ export async function POST(
       clientNotes: source.clientNotes,
       includePhotos: source.includePhotos,
       dismantlingAmount: source.dismantlingAmount,
+      applyVehiclePrep: source.applyVehiclePrep,
+      applyVehicleFinish: source.applyVehicleFinish,
       servicePricing: source.servicePricing ?? undefined,
       lineItems: {
         create: hagelLines.map((line) => ({
@@ -54,6 +60,9 @@ export async function POST(
           orientation: line.orientation,
           aluminum: line.aluminum,
           glue: line.glue,
+          dap: line.dap,
+          paintReserve: line.paintReserve,
+          extraWu: line.extraWu,
           laborHours: line.laborHours,
           laborRate: line.laborRate,
           laborRateId: line.laborRateId,

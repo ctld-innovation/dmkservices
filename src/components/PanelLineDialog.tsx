@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { DAMAGE_TYPES, DENT_ORIENTATIONS, REPAIR_METHODS } from "@/lib/constants";
+import { DAMAGE_TYPES, DENT_ORIENTATIONS, ESTIMATE_REPAIR_METHODS } from "@/lib/constants";
 import { computeHagelHours, computeHagelWorkUnits, hagelSizeOptions, type HagelExpertConfig } from "@/lib/hagelExpert";
 import { Button, Field, Input, Select } from "@/components/ui";
 
@@ -16,6 +16,9 @@ export type PanelLineDraft = {
   orientation: "HORIZONTAL" | "VERTICAL";
   aluminum: boolean;
   glue: boolean;
+  dap: boolean;
+  paintReserve: boolean;
+  extraWu: number;
   laborHours: number;
   laborRate: number;
   laborRateId?: string | null;
@@ -45,12 +48,13 @@ export function PanelLineDialog({
   onRemove?: () => void;
 }) {
   function withHours(value: PanelLineDraft) {
-    if (value.repairMethod !== "PDR") return value;
+    if (value.repairMethod !== "PDR") return { ...value, laborHours: value.repairMethod === "PANEL_REPLACEMENT" ? 0 : value.laborHours };
     return { ...value, laborHours: computeHagelHours(hagel, value, extrasWu) };
   }
 
   const [form, setForm] = useState(() => withHours(draft));
   const sizes = hagelSizeOptions(hagel);
+  const replacement = form.repairMethod === "PANEL_REPLACEMENT";
 
   useEffect(() => {
     if (!open) return;
@@ -67,6 +71,10 @@ export function PanelLineDialog({
   function patch(partial: Partial<PanelLineDraft>) {
     setForm((prev) => {
       const next = { ...prev, ...partial };
+      if (next.repairMethod === "PANEL_REPLACEMENT") {
+        next.laborHours = 0;
+        return next;
+      }
       if (next.repairMethod === "PDR") {
         next.laborHours = computeHagelHours(hagel, next, extrasWu);
       }
@@ -116,64 +124,99 @@ export function PanelLineDialog({
           </Field>
           <Field label="Méthode">
             <Select
-              value={form.repairMethod}
+              value={form.repairMethod === "CONVENTIONAL" ? "PDR" : form.repairMethod}
               onChange={(e) => patch({ repairMethod: e.target.value as PanelLineDraft["repairMethod"] })}
             >
-              {REPAIR_METHODS.map((item) => (
+              {ESTIMATE_REPAIR_METHODS.map((item) => (
                 <option key={item.value} value={item.value}>
                   {item.label}
                 </option>
               ))}
             </Select>
           </Field>
-          <Field label="Nombre de bosses">
-            <Input
-              type="number"
-              min={0}
-              value={form.dentCount}
-              onChange={(e) => patch({ dentCount: Number(e.target.value) })}
-            />
-          </Field>
-          <Field label="Taille (mm)">
-            <Select value={String(form.dentSize)} onChange={(e) => patch({ dentSize: Number(e.target.value) })}>
-              {sizes.map((size) => (
-                <option key={size} value={size}>
-                  {size} mm
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="Orientation">
-            <Select
-              value={form.orientation}
-              onChange={(e) => patch({ orientation: e.target.value as PanelLineDraft["orientation"] })}
-            >
-              {DENT_ORIENTATIONS.map((item) => (
-                <option key={item.value} value={item.value}>
-                  {item.label}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="Heures">
-            <Input
-              type="number"
-              min={0}
-              step="0.1"
-              value={form.laborHours}
-              readOnly={form.repairMethod === "PDR"}
-              title={form.repairMethod === "PDR" ? "Heures calculées selon Hagel Expert" : undefined}
-              onChange={(e) => {
-                if (form.repairMethod === "PDR") return;
-                setForm((prev) => ({ ...prev, laborHours: Number(e.target.value) }));
-              }}
-            />
-            {preview ? (
-              <p className="mt-1 text-xs text-slate-500">
-                Hagel Expert : {preview.wu} AW → {preview.hours} h
-              </p>
-            ) : null}
-          </Field>
+          {replacement ? (
+            <Field label="Nombre de bosses">
+              <p className="py-2 text-slate-400">—</p>
+            </Field>
+          ) : (
+            <Field label="Nombre de bosses">
+              <Input
+                type="number"
+                min={0}
+                value={form.dentCount}
+                onChange={(e) => patch({ dentCount: Number(e.target.value) })}
+              />
+            </Field>
+          )}
+          {replacement ? (
+            <Field label="Taille (mm)">
+              <p className="py-2 text-slate-400">—</p>
+            </Field>
+          ) : (
+            <Field label="Taille (mm)">
+              <Select value={String(form.dentSize)} onChange={(e) => patch({ dentSize: Number(e.target.value) })}>
+                {sizes.map((size) => (
+                  <option key={size} value={size}>
+                    {size} mm
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          )}
+          {replacement ? null : (
+            <Field label="Orientation">
+              <Select
+                value={form.orientation}
+                onChange={(e) => patch({ orientation: e.target.value as PanelLineDraft["orientation"] })}
+              >
+                {DENT_ORIENTATIONS.map((item) => (
+                  <option key={item.value} value={item.value}>
+                    {item.label}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          )}
+          {replacement ? (
+            <Field label="Heures">
+              <p className="py-2 text-slate-400">—</p>
+            </Field>
+          ) : (
+            <Field label="Heures">
+              <Input
+                type="number"
+                min={0}
+                step="0.1"
+                value={form.laborHours}
+                readOnly={form.repairMethod === "PDR"}
+                title={form.repairMethod === "PDR" ? "Heures calculées selon Hagel Expert" : undefined}
+                onChange={(e) => {
+                  if (form.repairMethod === "PDR") return;
+                  setForm((prev) => ({ ...prev, laborHours: Number(e.target.value) }));
+                }}
+              />
+              {preview ? (
+                <p className="mt-1 text-xs text-slate-500">
+                  Hagel Expert : {preview.wu} UT → {preview.hours} h
+                </p>
+              ) : null}
+            </Field>
+          )}
+          {replacement ? (
+            <Field label="Ex UT">
+              <p className="py-2 text-slate-400">—</p>
+            </Field>
+          ) : (
+            <Field label="Ex UT">
+              <Input
+                type="number"
+                min={0}
+                step="0.1"
+                value={form.extraWu}
+                onChange={(e) => patch({ extraWu: Number(e.target.value) || 0 })}
+              />
+            </Field>
+          )}
           <div className="grid grid-cols-2 items-center gap-4 sm:col-span-2">
             <label className="flex items-center gap-2 text-sm text-navy">
               <input
@@ -185,7 +228,19 @@ export function PanelLineDialog({
             </label>
             <label className="flex items-center gap-2 text-sm text-navy">
               <input type="checkbox" checked={form.glue} onChange={(e) => patch({ glue: e.target.checked })} />
-              Collage / traction (+{hagel.gluePercent} %)
+              Colle (+{hagel.gluePercent} %)
+            </label>
+            <label className="flex items-center gap-2 text-sm text-navy">
+              <input type="checkbox" checked={form.dap} onChange={(e) => patch({ dap: e.target.checked })} />
+              DAP (−{hagel.dapPercent} %)
+            </label>
+            <label className="flex items-center gap-2 text-sm text-navy">
+              <input
+                type="checkbox"
+                checked={form.paintReserve}
+                onChange={(e) => patch({ paintReserve: e.target.checked })}
+              />
+              RP (réserve peinture)
             </label>
           </div>
           <Field label="Pièces (€)">

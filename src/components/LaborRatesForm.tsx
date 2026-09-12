@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Trash2 } from "lucide-react";
 import { Button, ErrorText, Field, Input } from "@/components/ui";
 import { formatCurrency } from "@/lib/utils";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 
 export type LaborRateRow = {
   id: string;
@@ -29,6 +30,8 @@ export function LaborRatesForm({
   const [ok, setOk] = useState<string | null>(null);
   const [taxRate, setTaxRate] = useState(defaultTaxRate);
   const [busy, setBusy] = useState(false);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   async function saveTaxRate(value: number) {
     if (!canEdit) return;
@@ -89,17 +92,21 @@ export function LaborRatesForm({
     }
   }
 
-  async function removeRate(id: string) {
-    if (!canEdit) return;
-    if (!confirm("Supprimer ce taux horaire ?")) return;
+  async function removeRate() {
+    if (!canEdit || !pendingDeleteId) return;
+    setDeleting(true);
     const res = await fetch("/api/labor-rates", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id }),
+      body: JSON.stringify({ id: pendingDeleteId }),
     });
     const data = await res.json().catch(() => ({}));
+    setDeleting(false);
     if (!res.ok) setError(data.error || "Suppression impossible");
-    else router.refresh();
+    else {
+      setPendingDeleteId(null);
+      router.refresh();
+    }
   }
 
   return (
@@ -121,8 +128,7 @@ export function LaborRatesForm({
         </Field>
       </div>
       <p className="text-sm text-slate-500">
-        Ces taux sont proposés sur chaque ligne de devis (mode « taux horaire »). La remise client s’applique
-        ensuite sur le taux affiché, pas sur les montants forfaitaires.
+        Ces taux sont proposés sur chaque ligne de devis (mode « taux horaire »).
       </p>
       <div className="card overflow-x-auto">
         <table className="table">
@@ -186,7 +192,7 @@ export function LaborRatesForm({
                       type="button"
                       className="btn btn-ghost px-2"
                       disabled={!canEdit}
-                      onClick={() => void removeRate(rate.id)}
+                      onClick={() => setPendingDeleteId(rate.id)}
                     >
                       <Trash2 size={14} />
                     </button>
@@ -201,7 +207,7 @@ export function LaborRatesForm({
       {canEdit ? (
         <form onSubmit={createRate} className="card grid gap-4 p-5 sm:grid-cols-4">
           <Field label="Nouveau libellé">
-            <Input name="label" required placeholder="Ex. PDR, Grêle…" />
+            <Input name="label" required placeholder="Ex. DSP, Grêle…" />
           </Field>
           <Field label="Montant €/h">
             <Input name="amount" type="number" min={0} step="0.5" required defaultValue={75} />
@@ -221,6 +227,14 @@ export function LaborRatesForm({
       )}
       <ErrorText message={error} />
       {ok ? <p className="text-sm text-green-700">{ok}</p> : null}
+      <ConfirmDialog
+        open={Boolean(pendingDeleteId)}
+        title="Supprimer ce taux horaire ?"
+        message="Cette action est définitive."
+        busy={deleting}
+        onCancel={() => !deleting && setPendingDeleteId(null)}
+        onConfirm={() => void removeRate()}
+      />
     </div>
   );
 }

@@ -46,7 +46,7 @@ export default async function EstimatesPage({
     <div>
       <PageHeader
         title="Devis"
-        subtitle="Estimations PDR, grêle et carrosserie"
+        subtitle="Estimations DSP, grêle et carrosserie"
         actions={
           <WriteOnly canWrite={writable}>
             <Link href="/estimates/new" className="btn btn-primary">

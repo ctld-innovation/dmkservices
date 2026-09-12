@@ -1,8 +1,7 @@
 import type { CompanySettings, Estimate, EstimateLineItem, Client, Vehicle, User, VehiclePhoto } from "@prisma/client";
-import { computeEstimateTotals, isMethodFixed } from "@/lib/calculations";
+import { computeEstimateTotals, isMethodFixed, estimateLineMethodFlags, METHOD_FLAG_COLUMNS, methodFlagMark } from "@/lib/calculations";
 import { EstimateTotalsPanels } from "@/components/EstimateTotalsPanels";
 import { clientLabel, formatCurrency, formatDate, fullName } from "@/lib/utils";
-import { DAMAGE_TYPES, REPAIR_METHODS, labelOf } from "@/lib/constants";
 import { CarDiagramSvg } from "@/components/CarPanelPicker";
 import { resolveDiagramPanelMap } from "@/lib/diagram";
 
@@ -89,7 +88,7 @@ export function EstimateDocument({
             {estimate.vehicle.brand} {estimate.vehicle.model}
           </p>
           <p>Immat. : {estimate.vehicle.licensePlate}</p>
-          <p>VIN : {estimate.vehicle.vin}</p>
+          <p>VIN : {estimate.vehicle.vin || "—"}</p>
           {estimate.vehicle.year ? <p>Année : {estimate.vehicle.year}</p> : null}
           {estimate.vehicle.color ? <p>Couleur : {estimate.vehicle.color}</p> : null}
           {estimate.vehicle.mileage != null ? (
@@ -105,37 +104,59 @@ export function EstimateDocument({
       <table className="w-full border-collapse text-[10px]">
         <thead>
           <tr className="bg-amber text-navy">
-            {["Pièce", "Dommage", "Méthode", "Taille", "Bosses", "Heures", "Taux", "Pièces", "Peinture", "Total"].map(
-              (h) => (
-                <th key={h} className="px-1.5 py-1.5 text-left font-bold">
-                  {h}
-                </th>
-              ),
-            )}
+            <th rowSpan={2} className="px-1.5 py-1.5 text-left font-bold">
+              Pièce
+            </th>
+            <th colSpan={5} className="px-1.5 py-1.5 text-center font-bold">
+              Méthode
+            </th>
+            <th rowSpan={2} className="px-1.5 py-1.5 text-left font-bold">
+              Taille
+            </th>
+            <th rowSpan={2} className="px-1.5 py-1.5 text-left font-bold">
+              Bosses
+            </th>
+            <th rowSpan={2} className="px-1.5 py-1.5 text-left font-bold">
+              Heures
+            </th>
+            <th rowSpan={2} className="px-1.5 py-1.5 text-left font-bold">
+              Total
+            </th>
+          </tr>
+          <tr className="bg-amber text-navy">
+            {METHOD_FLAG_COLUMNS.map((col) => (
+              <th key={col} className="px-1 py-1 text-center font-bold">
+                {col}
+              </th>
+            ))}
           </tr>
         </thead>
         <tbody>
           {estimate.lineItems
             .slice()
             .sort((a, b) => a.sortOrder - b.sortOrder)
-            .map((line, i) => (
-              <tr key={line.id} className={i % 2 ? "bg-mist" : "bg-white"}>
-                <td className="px-1.5 py-1">{line.panel}</td>
-                <td className="px-1.5 py-1">{labelOf(DAMAGE_TYPES, line.damageType)}</td>
-                <td className="px-1.5 py-1">{labelOf(REPAIR_METHODS, line.repairMethod)}</td>
-                <td className="px-1.5 py-1">{line.dentSize ? `${line.dentSize} mm` : "—"}</td>
-                <td className="px-1.5 py-1 text-right">{line.dentCount || ""}</td>
-                <td className="px-1.5 py-1 text-right">{Number(line.laborHours).toFixed(1)}</td>
-                <td className="px-1.5 py-1 text-right">{formatCurrency(line.laborRate)}</td>
-                <td className="px-1.5 py-1 text-right">{formatCurrency(line.partsCost)}</td>
-                <td className="px-1.5 py-1 text-right">{formatCurrency(line.paintCost)}</td>
-                <td className="px-1.5 py-1 text-right font-semibold">
-                  {isMethodFixed(estimate.servicePricing, line.repairMethod)
-                    ? "—"
-                    : formatCurrency(line.lineTotal)}
-                </td>
-              </tr>
-            ))}
+            .map((line, i) => {
+              const flags = estimateLineMethodFlags(line);
+              const replacement = line.repairMethod === "PANEL_REPLACEMENT";
+              return (
+                <tr key={line.id} className={i % 2 ? "bg-mist" : "bg-white"}>
+                  <td className="px-1.5 py-1">{line.panel}</td>
+                  {METHOD_FLAG_COLUMNS.map((col) => (
+                    <td key={col} className="px-1 py-1 text-center">
+                      {methodFlagMark(flags[col])}
+                    </td>
+                  ))}
+                  <td className="px-1.5 py-1">{replacement ? "—" : line.dentSize ? `${line.dentSize} mm` : "—"}</td>
+                  <td className="px-1.5 py-1 text-right">{replacement ? "—" : line.dentCount || ""}</td>
+                  <td className="px-1.5 py-1 text-right">{replacement ? "—" : Number(line.laborHours).toFixed(1)}</td>
+                  <td className="px-1.5 py-1 text-right font-semibold">
+                    {isMethodFixed(estimate.servicePricing, line.repairMethod)
+                      ? "—"
+                      : formatCurrency(line.lineTotal)}
+                  </td>
+                </tr>
+              );
+            })}
         </tbody>
       </table>
 

@@ -45,7 +45,10 @@ export async function PATCH(
     where: { id: "default" },
     select: { hagelExpert: true },
   });
-  const lineItems = applyHagelHoursToLines(data.lineItems, parseHagelExpertConfig(settings?.hagelExpert));
+  const lineItems = applyHagelHoursToLines(data.lineItems, parseHagelExpertConfig(settings?.hagelExpert), {
+    preparation: data.applyVehiclePrep,
+    finish: data.applyVehicleFinish,
+  });
 
   const estimate = await prisma.$transaction(async (tx) => {
     await tx.estimateLineItem.deleteMany({ where: { estimateId: id } });
@@ -64,6 +67,8 @@ export async function PATCH(
         clientNotes: data.clientNotes,
         includePhotos: data.includePhotos ?? false,
         dismantlingAmount: data.dismantlingAmount ?? 0,
+        applyVehiclePrep: data.applyVehiclePrep ?? false,
+        applyVehicleFinish: data.applyVehicleFinish ?? false,
         servicePricing: parseServicePricing(data.servicePricing),
         lineItems: {
           create: lineItems.map((line, idx) => {

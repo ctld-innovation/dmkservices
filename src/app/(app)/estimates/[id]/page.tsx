@@ -1,12 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { computeEstimateTotals, isMethodFixed } from "@/lib/calculations";
+import { computeEstimateTotals, isMethodFixed, estimateLineMethodFlags, METHOD_FLAG_COLUMNS, methodFlagMark } from "@/lib/calculations";
 import { clientLabel, formatCurrency, formatDate, formatDateTime, fullName, vehicleLabel } from "@/lib/utils";
 import {
-  DAMAGE_TYPES,
   ESTIMATE_STATUSES,
-  REPAIR_METHODS,
   STATUS_COLORS,
   labelOf,
 } from "@/lib/constants";
@@ -62,7 +60,12 @@ export default async function EstimateDetailPage({ params }: { params: Promise<{
                 companyName={settings?.name || "DMK Services"}
               />
               <DuplicateEstimateButton id={id} />
-              <DeleteButton url={`/api/estimates/${id}`} redirectTo="/estimates" />
+              <DeleteButton
+                url={`/api/estimates/${id}`}
+                redirectTo="/estimates"
+                title="Supprimer ce devis ?"
+                message="Cette action est définitive. Un devis facturé ne peut pas être supprimé."
+              />
             </WriteOnly>
           </>
         }
@@ -88,7 +91,7 @@ export default async function EstimateDetailPage({ params }: { params: Promise<{
         <Card className="space-y-1 p-5 text-sm">
           <h2 className="mb-2 font-semibold text-navy">Véhicule</h2>
           <p>{vehicleLabel(estimate.vehicle)}</p>
-          <p className="font-mono text-xs">{estimate.vehicle.vin}</p>
+          <p className="font-mono text-xs">{estimate.vehicle.vin || "—"}</p>
           <p>Sinistre : {formatDate(estimate.damageDate)}</p>
           <p>Estimateur : {fullName(estimate.estimator.firstName, estimate.estimator.lastName)}</p>
         </Card>
@@ -98,37 +101,46 @@ export default async function EstimateDetailPage({ params }: { params: Promise<{
         <table className="table">
           <thead>
             <tr>
-              <th>Pièce</th>
-              <th>Dommage</th>
-              <th>Méthode</th>
-              <th>Taille</th>
-              <th>Bosses</th>
-              <th>Heures</th>
-              <th>Taux</th>
-              <th>Pièces</th>
-              <th>Peinture</th>
-              <th>Total</th>
+              <th rowSpan={2}>Pièce</th>
+              <th colSpan={5} className="text-center">
+                Méthode
+              </th>
+              <th rowSpan={2}>Taille</th>
+              <th rowSpan={2}>Bosses</th>
+              <th rowSpan={2}>Heures</th>
+              <th rowSpan={2}>Total</th>
+            </tr>
+            <tr>
+              {METHOD_FLAG_COLUMNS.map((col) => (
+                <th key={col} className="text-center">
+                  {col}
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
-            {estimate.lineItems.map((line) => (
-              <tr key={line.id}>
-                <td>{line.panel}</td>
-                <td>{labelOf(DAMAGE_TYPES, line.damageType)}</td>
-                <td>{labelOf(REPAIR_METHODS, line.repairMethod)}</td>
-                <td>{line.dentSize ? `${line.dentSize} mm` : "—"}</td>
-                <td>{line.dentCount}</td>
-                <td>{line.laborHours}</td>
-                <td>{formatCurrency(line.laborRate)}</td>
-                <td>{formatCurrency(line.partsCost)}</td>
-                <td>{formatCurrency(line.paintCost)}</td>
-                <td className="font-medium">
-                  {isMethodFixed(estimate.servicePricing, line.repairMethod)
-                    ? "—"
-                    : formatCurrency(line.lineTotal)}
-                </td>
-              </tr>
-            ))}
+            {estimate.lineItems.map((line) => {
+              const flags = estimateLineMethodFlags(line);
+              const replacement = line.repairMethod === "PANEL_REPLACEMENT";
+              return (
+                <tr key={line.id}>
+                  <td>{line.panel}</td>
+                  {METHOD_FLAG_COLUMNS.map((col) => (
+                    <td key={col} className="text-center">
+                      {methodFlagMark(flags[col])}
+                    </td>
+                  ))}
+                  <td>{replacement ? "—" : line.dentSize ? `${line.dentSize} mm` : "—"}</td>
+                  <td>{replacement ? "—" : line.dentCount}</td>
+                  <td>{replacement ? "—" : line.laborHours}</td>
+                  <td className="font-medium">
+                    {isMethodFixed(estimate.servicePricing, line.repairMethod)
+                      ? "—"
+                      : formatCurrency(line.lineTotal)}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
         <div className="border-t border-line p-5">

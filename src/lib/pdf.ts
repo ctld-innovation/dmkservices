@@ -3,9 +3,8 @@ import autoTable from "jspdf-autotable";
 import fs from "fs";
 import path from "path";
 import type { Estimate, EstimateLineItem, Client, Vehicle, User, CompanySettings, VehiclePhoto } from "@prisma/client";
-import { computeEstimateTotals, isMethodFixed, serviceTotalRows } from "./calculations";
+import { computeEstimateTotals, isMethodFixed, serviceTotalRows, estimateLineMethodFlags, METHOD_FLAG_COLUMNS, methodFlagMark } from "./calculations";
 import { formatDate, clientLabel, fullName } from "./utils";
-import { DAMAGE_TYPES, REPAIR_METHODS, labelOf } from "./constants";
 import {
   EXPLODED_PANEL_SHAPES,
   EXPLODED_VIEW,
@@ -238,7 +237,7 @@ export async function buildEstimatePdf(
   drawBox(doc, margin + colW + 8, y, colW, 32, "Véhicule", [
     `${estimate.vehicle.brand} ${estimate.vehicle.model}`,
     `Immat. : ${estimate.vehicle.licensePlate}`,
-    `VIN : ${estimate.vehicle.vin}`,
+    `VIN : ${estimate.vehicle.vin || "—"}`,
     estimate.vehicle.year ? `Année : ${estimate.vehicle.year}` : "",
     estimate.vehicle.color ? `Couleur : ${estimate.vehicle.color}` : "",
     estimate.vehicle.mileage != null ? `Km : ${estimate.vehicle.mileage.toLocaleString("fr-FR")}` : "",
@@ -252,46 +251,46 @@ export async function buildEstimatePdf(
   const body = estimate.lineItems
     .slice()
     .sort((a, b) => a.sortOrder - b.sortOrder)
-    .map((line) => [
-      line.panel,
-      labelOf(DAMAGE_TYPES, line.damageType),
-      labelOf(REPAIR_METHODS, line.repairMethod),
-      line.dentSize ? `${line.dentSize} mm` : "—",
-      String(line.dentCount || ""),
-      Number(line.laborHours).toFixed(1),
-      formatPdfCurrency(line.laborRate),
-      formatPdfCurrency(line.partsCost),
-      formatPdfCurrency(line.paintCost),
-      isMethodFixed(estimate.servicePricing, line.repairMethod) ? "—" : formatPdfCurrency(line.lineTotal),
-    ]);
+    .map((line) => {
+      const flags = estimateLineMethodFlags(line);
+      const replacement = line.repairMethod === "PANEL_REPLACEMENT";
+      return [
+        line.panel,
+        ...METHOD_FLAG_COLUMNS.map((col) => methodFlagMark(flags[col])),
+        replacement ? "—" : line.dentSize ? `${line.dentSize} mm` : "—",
+        replacement ? "—" : String(line.dentCount || ""),
+        replacement ? "—" : Number(line.laborHours).toFixed(1),
+        isMethodFixed(estimate.servicePricing, line.repairMethod) ? "—" : formatPdfCurrency(line.lineTotal),
+      ];
+    });
 
   autoTable(doc, {
     startY: y + 4,
-    head: [[
-      "Pièce",
-      "Dommage",
-      "Méthode",
-      "Taille",
-      "Bosses",
-      "Heures",
-      "Taux",
-      "Pièces",
-      "Peinture",
-      "Total",
-    ]],
+    head: [
+      [
+        { content: "Pièce", rowSpan: 2 },
+        { content: "Méthode", colSpan: 5, styles: { halign: "center" } },
+        { content: "Taille", rowSpan: 2 },
+        { content: "Bosses", rowSpan: 2 },
+        { content: "Heures", rowSpan: 2 },
+        { content: "Total", rowSpan: 2 },
+      ],
+      METHOD_FLAG_COLUMNS.map((col) => ({ content: col, styles: { halign: "center" } })),
+    ],
     body,
-    styles: { fontSize: 7.5, cellPadding: 1.6, textColor: [30, 40, 50] },
+    styles: { fontSize: 7.5, cellPadding: 1.6, textColor: [30, 40, 50], halign: "center", valign: "middle" },
     headStyles: {
       fillColor: [0, 217, 245],
       textColor: [10, 61, 72],
       fontStyle: "bold",
       fontSize: 7.5,
+      halign: "center",
+      valign: "middle",
     },
     alternateRowStyles: { fillColor: [244, 252, 254] },
     margin: { left: margin, right: margin },
     columnStyles: {
-      4: { halign: "right" },
-      5: { halign: "right" },
+      0: { halign: "left" },
       6: { halign: "right" },
       7: { halign: "right" },
       8: { halign: "right" },

@@ -85,11 +85,12 @@ export function HagelExpertForm({
         <div>
           <h2 className="font-semibold text-navy">Règles de calcul</h2>
           <p className="mt-1 text-sm text-slate-500">
-            AW (unités de travail) selon le nombre et la taille des bosses, puis conversion en heures via le teiler.
+            UT (unités de travail) selon le nombre et la taille des bosses, puis conversion en heures via le teiler.
+            La préparation et la finition véhicule ne s’ajoutent au devis que si elles sont cochées.
           </p>
         </div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <Field label="Teiler (AW / heure)" hint="10er = 10 AW/h, 12er = 12 AW/h">
+          <Field label="Teiler (UT / heure)" hint="10er = 10 UT/h, 12er = 12 UT/h">
             <Input
               type="number"
               min={1}
@@ -99,7 +100,7 @@ export function HagelExpertForm({
               onChange={(e) => patch({ wuPerHour: Number(e.target.value) })}
             />
           </Field>
-          <Field label="AW de base / panneau">
+          <Field label="UT de base / panneau">
             <Input
               type="number"
               min={0}
@@ -109,7 +110,7 @@ export function HagelExpertForm({
               onChange={(e) => patch({ wuBaseValue: Number(e.target.value) })}
             />
           </Field>
-          <Field label="Finish / panneau (AW)">
+          <Field label="Finish / panneau (UT)">
             <Input
               type="number"
               min={0}
@@ -119,7 +120,7 @@ export function HagelExpertForm({
               onChange={(e) => patch({ finishPerPanel: Number(e.target.value) })}
             />
           </Field>
-          <Field label="Rüstzeit véhicule (AW)">
+          <Field label="Préparation véhicule (UT)">
             <Input
               type="number"
               min={0}
@@ -129,7 +130,7 @@ export function HagelExpertForm({
               onChange={(e) => patch({ preparationWu: Number(e.target.value) })}
             />
           </Field>
-          <Field label="Finish véhicule (AW)">
+          <Field label="Finition véhicule (UT)">
             <Input
               type="number"
               min={0}
@@ -149,7 +150,7 @@ export function HagelExpertForm({
               onChange={(e) => patch({ aluminumPercent: Number(e.target.value) })}
             />
           </Field>
-          <Field label="Majoration collage / traction (%)">
+          <Field label="Majoration colle (%)">
             <Input
               type="number"
               min={0}
@@ -157,6 +158,16 @@ export function HagelExpertForm({
               value={config.gluePercent}
               disabled={!canEdit}
               onChange={(e) => patch({ gluePercent: Number(e.target.value) })}
+            />
+          </Field>
+          <Field label="Réduction DAP (%)">
+            <Input
+              type="number"
+              min={0}
+              step="1"
+              value={config.dapPercent}
+              disabled={!canEdit}
+              onChange={(e) => patch({ dapPercent: Number(e.target.value) })}
             />
           </Field>
           <Field label="Max bosses horizontales">
@@ -183,7 +194,7 @@ export function HagelExpertForm({
       <div className="card space-y-3 p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="font-semibold text-navy">Table AW Hagel Expert</h2>
+            <h2 className="font-semibold text-navy">Table UT Hagel Expert</h2>
             <p className="text-sm text-slate-500">Valeur de travail selon le nombre de bosses et le diamètre (mm).</p>
           </div>
           <div className="flex gap-2">

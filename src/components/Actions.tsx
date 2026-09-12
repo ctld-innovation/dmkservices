@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Field, Input, Textarea } from "@/components/ui";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { ESTIMATE_STATUSES, labelOf } from "@/lib/constants";
 
 export function WriteOnly({
@@ -47,34 +48,53 @@ export function DeleteButton({
   url,
   redirectTo,
   label = "Supprimer",
+  title = "Confirmer la suppression",
+  message = "Cette action est définitive.",
 }: {
   url: string;
   redirectTo: string;
   label?: string;
+  title?: string;
+  message?: string;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function confirmDelete() {
+    setBusy(true);
+    setError(null);
+    const res = await fetch(url, { method: "DELETE" });
+    const data = await res.json().catch(() => ({}));
+    setBusy(false);
+    if (!res.ok) {
+      setError(data.error || "Suppression impossible");
+      return;
+    }
+    setOpen(false);
+    router.push(redirectTo);
+    router.refresh();
+  }
+
   return (
-    <Button
-      type="button"
-      variant="danger"
-      disabled={busy}
-      onClick={async () => {
-        if (!confirm("Confirmer la suppression ?")) return;
-        setBusy(true);
-        const res = await fetch(url, { method: "DELETE" });
-        const data = await res.json().catch(() => ({}));
-        setBusy(false);
-        if (!res.ok) {
-          alert(data.error || "Suppression impossible");
-          return;
-        }
-        router.push(redirectTo);
-        router.refresh();
-      }}
-    >
-      {label}
-    </Button>
+    <>
+      <Button type="button" variant="danger" disabled={busy} onClick={() => setOpen(true)}>
+        {label}
+      </Button>
+      <ConfirmDialog
+        open={open}
+        title={title}
+        message={error ?? message}
+        busy={busy}
+        onCancel={() => {
+          if (busy) return;
+          setOpen(false);
+          setError(null);
+        }}
+        onConfirm={() => void confirmDelete()}
+      />
+    </>
   );
 }
 

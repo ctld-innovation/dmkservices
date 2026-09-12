@@ -15,6 +15,7 @@ export type HagelExpertConfig = {
   maxDentsVertical: number;
   aluminumPercent: number;
   gluePercent: number;
+  dapPercent: number;
   finishPerPanel: number;
   preparationWu: number;
   finishVehicle: number;
@@ -28,6 +29,8 @@ export type HagelLineInput = {
   orientation: DentOrientation | string;
   aluminum?: boolean;
   glue?: boolean;
+  dap?: boolean;
+  extraWu?: number;
 };
 
 const DEFAULT_SIZES = defaultTable.sizes as number[];
@@ -44,6 +47,7 @@ export function defaultHagelExpertConfig(): HagelExpertConfig {
     maxDentsVertical: 50,
     aluminumPercent: 25,
     gluePercent: 25,
+    dapPercent: 40,
     finishPerPanel: 2.5,
     preparationWu: 6,
     finishVehicle: 13,
@@ -88,6 +92,7 @@ export function parseHagelExpertConfig(raw: unknown): HagelExpertConfig {
     maxDentsVertical: Math.max(1, num(obj.maxDentsVertical, base.maxDentsVertical)),
     aluminumPercent: num(obj.aluminumPercent, base.aluminumPercent),
     gluePercent: num(obj.gluePercent, base.gluePercent),
+    dapPercent: Math.max(0, num(obj.dapPercent, base.dapPercent)),
     finishPerPanel: Math.max(0, num(obj.finishPerPanel, base.finishPerPanel)),
     preparationWu: Math.max(0, num(obj.preparationWu, base.preparationWu)),
     finishVehicle: Math.max(0, num(obj.finishVehicle, base.finishVehicle)),
@@ -142,8 +147,10 @@ export function computeHagelWorkUnits(
   let wu = scaled;
   if (line.aluminum) wu = Math.round(wu * (1 + config.aluminumPercent / 100));
   if (line.glue) wu = Math.round(wu * (1 + config.gluePercent / 100));
+  if (line.dap) wu = Math.round(wu * (1 - config.dapPercent / 100));
   const finish = Math.round(config.finishPerPanel * (config.wuPerHour / 10));
-  return Math.max(0, wu + finish + extrasWu);
+  const extra = Math.max(0, Number(line.extraWu) || 0);
+  return Math.max(0, wu + finish + extrasWu + extra);
 }
 
 export function computeHagelHours(
@@ -155,8 +162,20 @@ export function computeHagelHours(
   return round2(wu / config.wuPerHour);
 }
 
-export function hagelVehicleExtrasWu(config: HagelExpertConfig) {
-  return Math.round((config.preparationWu + config.finishVehicle) * (config.wuPerHour / 10));
+export function hagelScaledWu(config: HagelExpertConfig, rawWu: number) {
+  return Math.round(Math.max(0, rawWu) * (config.wuPerHour / 10));
+}
+
+export type HagelVehicleExtras = {
+  preparation?: boolean;
+  finish?: boolean;
+};
+
+export function hagelVehicleExtrasWu(config: HagelExpertConfig, extras: HagelVehicleExtras = {}) {
+  let raw = 0;
+  if (extras.preparation) raw += config.preparationWu;
+  if (extras.finish) raw += config.finishVehicle;
+  return hagelScaledWu(config, raw);
 }
 
 export function firstPdrLineIndex<T extends { repairMethod?: string; panel?: string; dentCount?: number }>(
@@ -170,12 +189,14 @@ export function firstPdrLineIndex<T extends { repairMethod?: string; panel?: str
 export function applyHagelHoursToLines<T extends HagelLineInput & { repairMethod?: string; panel?: string; laborHours: number }>(
   lines: T[],
   config: HagelExpertConfig,
+  extras: HagelVehicleExtras = {},
 ) {
   const firstPdr = firstPdrLineIndex(lines);
-  const vehicleExtras = hagelVehicleExtrasWu(config);
+  const vehicleExtras = hagelVehicleExtrasWu(config, extras);
   return lines.map((line, index) => {
+    if (line.repairMethod === "PANEL_REPLACEMENT") return { ...line, laborHours: 0 };
     if (line.repairMethod !== "PDR") return line;
-    const extras = index === firstPdr ? vehicleExtras : 0;
-    return { ...line, laborHours: computeHagelHours(config, line, extras) };
+    const extra = index === firstPdr ? vehicleExtras : 0;
+    return { ...line, laborHours: computeHagelHours(config, line, extra) };
   });
 }

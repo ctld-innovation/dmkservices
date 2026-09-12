@@ -79,7 +79,7 @@ export default async function VehiclesPage({
                         {vehicleLabel(v)}
                       </Link>
                     </td>
-                    <td className="font-mono text-xs">{v.vin}</td>
+                    <td className="font-mono text-xs">{v.vin || "—"}</td>
                     <td>
                       {v.clients
                         .map((l) => l.client.companyName || `${l.client.firstName} ${l.client.lastName}`)

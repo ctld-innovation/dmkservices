@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 
 export function PhotoUploader({ vehicleId }: { vehicleId: string }) {
   const router = useRouter();
@@ -33,15 +34,33 @@ export function PhotoUploader({ vehicleId }: { vehicleId: string }) {
 
 export function DeletePhotoButton({ id }: { id: string }) {
   const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  async function confirmDelete() {
+    setBusy(true);
+    await fetch(`/api/photos/${id}`, { method: "DELETE" });
+    setBusy(false);
+    setOpen(false);
+    router.refresh();
+  }
+
   return (
-    <button
-      className="absolute right-2 top-2 rounded-full bg-black/60 px-2 py-1 text-xs text-white"
-      onClick={async () => {
-        await fetch(`/api/photos/${id}`, { method: "DELETE" });
-        router.refresh();
-      }}
-    >
-      Supprimer
-    </button>
+    <>
+      <button
+        className="absolute right-2 top-2 rounded-full bg-black/60 px-2 py-1 text-xs text-white"
+        onClick={() => setOpen(true)}
+      >
+        Supprimer
+      </button>
+      <ConfirmDialog
+        open={open}
+        title="Supprimer cette photo ?"
+        message="Cette action est définitive."
+        busy={busy}
+        onCancel={() => !busy && setOpen(false)}
+        onConfirm={() => void confirmDelete()}
+      />
+    </>
   );
 }

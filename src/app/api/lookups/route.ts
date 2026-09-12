@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { canAdmin, canWrite, getSession, unauthorized, forbidden, jsonError } from "@/lib/auth";
+import { syncVehicleCatalogLookups } from "@/lib/vehicleLookups";
 
 export async function GET() {
   const session = await getSession();
   if (!session) return unauthorized();
+  await syncVehicleCatalogLookups();
   const items = await prisma.lookupValue.findMany({ orderBy: [{ category: "asc" }, { sortOrder: "asc" }] });
   return NextResponse.json(items);
 }

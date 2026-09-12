@@ -177,6 +177,8 @@ model Estimate {
   includePhotos Boolean        @default(false)
   servicePricing Json?
   dismantlingAmount Float      @default(0)
+  applyVehiclePrep   Boolean   @default(false)
+  applyVehicleFinish Boolean   @default(false)
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
 
@@ -203,6 +205,9 @@ model EstimateLineItem {
   orientation  String       @default("HORIZONTAL")
   aluminum     Boolean      @default(false)
   glue         Boolean      @default(false)
+  dap          Boolean      @default(false)
+  paintReserve Boolean      @default(false)
+  extraWu      Float        @default(0)
   laborHours   Float        @default(0)
   laborRate    Float
   laborRateId  String?

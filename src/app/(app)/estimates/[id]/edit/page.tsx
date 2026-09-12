@@ -56,6 +56,8 @@ export default async function EditEstimatePage({ params }: { params: Promise<{ i
           clientNotes: estimate.clientNotes,
           includePhotos: estimate.includePhotos,
           dismantlingAmount: estimate.dismantlingAmount,
+          applyVehiclePrep: estimate.applyVehiclePrep,
+          applyVehicleFinish: estimate.applyVehicleFinish,
           servicePricing: estimate.servicePricing,
           lineItems: estimate.lineItems,
         }}

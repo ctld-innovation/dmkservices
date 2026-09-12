@@ -5,6 +5,7 @@ import { canWrite, getSession, unauthorized, forbidden, jsonError } from "@/lib/
 import { vehicleSchema } from "@/lib/validations";
 import { writeAudit } from "@/lib/audit";
 import { pagination } from "@/lib/utils";
+import { ensureBrandModelLookups } from "@/lib/vehicleLookups";
 
 export async function GET(req: NextRequest) {
   const session = await getSession();
@@ -45,6 +46,7 @@ export async function POST(req: Request) {
   if (!parsed.success) return jsonError(parsed.error.issues[0]?.message ?? "Données invalides");
 
   const { clientIds, clientRoles, firstRegistration, vin, ...rest } = parsed.data;
+  await ensureBrandModelLookups(rest.brand, rest.model);
   const vehicle = await prisma.vehicle.create({
     data: {
       ...rest,

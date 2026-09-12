@@ -26,13 +26,18 @@ export default async function VehicleDetailPage({ params }: { params: Promise<{ 
     <div>
       <PageHeader
         title={vehicleLabel(vehicle)}
-        subtitle={vehicle.vin}
+        subtitle={vehicle.vin || "VIN non renseigné"}
         actions={
           <WriteOnly canWrite={writable}>
             <Link href={`/vehicles/${id}/edit`} className="btn btn-primary">
               Modifier
             </Link>
-            <DeleteButton url={`/api/vehicles/${id}`} redirectTo="/vehicles" />
+            <DeleteButton
+              url={`/api/vehicles/${id}`}
+              redirectTo="/vehicles"
+              title="Supprimer ce véhicule ?"
+              message="Le véhicule et ses photos seront retirés. Impossible s’il est lié à des devis."
+            />
           </WriteOnly>
         }
       />

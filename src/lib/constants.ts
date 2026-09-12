@@ -33,10 +33,12 @@ export const DAMAGE_TYPES = [
 ] as const;
 
 export const REPAIR_METHODS = [
-  { value: "PDR", label: "PDR (débosselage sans peinture)" },
+  { value: "PDR", label: "DSP (débosselage sans peinture)" },
   { value: "CONVENTIONAL", label: "Réparation conventionnelle" },
   { value: "PANEL_REPLACEMENT", label: "Remplacement de pièce" },
 ] as const;
+
+export const ESTIMATE_REPAIR_METHODS = REPAIR_METHODS.filter((item) => item.value !== "CONVENTIONAL");
 
 export const SEVERITIES = [
   { value: "LIGHT", label: "Léger" },

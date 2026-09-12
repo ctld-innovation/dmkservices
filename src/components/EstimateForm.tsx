@@ -1,26 +1,28 @@
 "use client";
 
-import { DragEvent, useMemo, useState } from "react";
+import { DragEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { GripVertical, Plus, Trash2 } from "lucide-react";
 import {
   DAMAGE_TYPES,
-  DENT_ORIENTATIONS,
+  ESTIMATE_REPAIR_METHODS,
   ESTIMATE_STATUSES,
-  REPAIR_METHODS,
 } from "@/lib/constants";
-import { computeLineTotal, computeEstimateTotals, applyHourlyDiscount, parseServicePricing, isMethodFixed, SERVICE_KEYS, SERVICE_LABELS, type ServicePricing } from "@/lib/calculations";
-import { formatCurrency, toInputDate, cn } from "@/lib/utils";
+import { computeLineTotal, computeLineLabor, computeEstimateTotals, parseServicePricing, isMethodFixed, FORFAIT_SERVICE_KEYS, SERVICE_LABELS, serviceTotalRows, type ServicePricing } from "@/lib/calculations";
+import { formatCurrency, toInputDate, cn, round2 } from "@/lib/utils";
 import { Button, ErrorText, Field, Input, Select, Textarea } from "@/components/ui";
 import { CarPanelPicker } from "@/components/CarPanelPicker";
 import { PanelLineDialog, type PanelLineDraft } from "@/components/PanelLineDialog";
+import { VehicleForm } from "@/components/VehicleForm";
 import {
   applyHagelHoursToLines,
   computeHagelHours,
   firstPdrLineIndex,
+  hagelScaledWu,
   hagelSizeOptions,
   hagelVehicleExtrasWu,
   parseHagelExpertConfig,
+  type HagelVehicleExtras,
 } from "@/lib/hagelExpert";
 
 type Line = {
@@ -34,6 +36,9 @@ type Line = {
   orientation: "HORIZONTAL" | "VERTICAL";
   aluminum: boolean;
   glue: boolean;
+  dap: boolean;
+  paintReserve: boolean;
+  extraWu: number;
   laborHours: number;
   laborRate: number;
   laborRateId?: string | null;
@@ -44,8 +49,8 @@ type Line = {
 type LaborRateOption = { id: string; label: string; amount: number; isDefault: boolean; active: boolean };
 
 const METHOD_SHORT: Record<Line["repairMethod"], string> = {
-  PDR: "PDR",
-  CONVENTIONAL: "Conventionnel",
+  PDR: "DSP",
+  CONVENTIONAL: "Conv.",
   PANEL_REPLACEMENT: "Remplacement",
 };
 
@@ -103,6 +108,8 @@ export function EstimateForm({
     clientNotes?: string | null;
     includePhotos?: boolean;
     dismantlingAmount?: number | null;
+    applyVehiclePrep?: boolean | null;
+    applyVehicleFinish?: boolean | null;
     servicePricing?: unknown;
     lineItems?: Array<
       Partial<Omit<Line, "orientation">> & {
@@ -110,6 +117,9 @@ export function EstimateForm({
         orientation?: string | null;
         aluminum?: boolean | null;
         glue?: boolean | null;
+        dap?: boolean | null;
+        paintReserve?: boolean | null;
+        extraWu?: number | null;
       }
     >;
   };
@@ -118,15 +128,19 @@ export function EstimateForm({
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [clientId, setClientId] = useState(initial?.clientId ?? "");
-  function firstVehicleIdFor(cid: string) {
+  const [vehicleList, setVehicleList] = useState(vehicles);
+  const [vehicleModal, setVehicleModal] = useState(false);
+  useEffect(() => {
+    void fetch("/api/lookups");
+  }, []);
+  function firstVehicleIdFor(cid: string, list = vehicleList) {
     if (!cid) return "";
-    return vehicles.find((v) => v.clients.some((c) => c.clientId === cid))?.id ?? "";
+    return list.find((v) => v.clients.some((c) => c.clientId === cid))?.id ?? "";
   }
   const [vehicleId, setVehicleId] = useState(
-    initial?.vehicleId || firstVehicleIdFor(initial?.clientId ?? "") || "",
+    initial?.vehicleId || firstVehicleIdFor(initial?.clientId ?? "", vehicles) || "",
   );
   const vat = taxRate;
-  const [applyDiscount, setApplyDiscount] = useState(true);
   const [dismantlingAmount, setDismantlingAmount] = useState(Number(initial?.dismantlingAmount) || 0);
   const [servicePricing, setServicePricing] = useState<ServicePricing>(() =>
     parseServicePricing(initial?.servicePricing),
@@ -136,23 +150,25 @@ export function EstimateForm({
   const [editingPanel, setEditingPanel] = useState<string | null>(null);
   const [panelDraft, setPanelDraft] = useState<PanelLineDraft | null>(null);
   const hagel = useMemo(() => parseHagelExpertConfig(hagelExpert), [hagelExpert]);
+  const [vehicleExtras, setVehicleExtras] = useState<HagelVehicleExtras>({
+    preparation: Boolean(initial?.applyVehiclePrep),
+    finish: Boolean(initial?.applyVehicleFinish),
+  });
 
   const defaultCatalog = laborRates.find((r) => r.isDefault && r.active) ?? laborRates.find((r) => r.active);
   const catalogById = useMemo(
     () => Object.fromEntries(laborRates.map((rate) => [rate.id, rate])),
     [laborRates],
   );
-  const clientDiscount = Number(clients.find((c) => c.id === clientId)?.discountPercent) || 0;
-  const activeDiscount = applyDiscount ? clientDiscount : 0;
-  function pricedHourly(baseAmount: number, discount = activeDiscount) {
-    return applyHourlyDiscount(baseAmount, discount);
+  function pricedHourly(baseAmount: number) {
+    return Number(baseAmount) || 0;
   }
 
-  function defaultRateAmount(discount = activeDiscount) {
-    return pricedHourly(defaultCatalog?.amount ?? laborRate, discount);
+  function defaultRateAmount() {
+    return pricedHourly(defaultCatalog?.amount ?? laborRate);
   }
 
-  function emptyLine(discount = activeDiscount): Line {
+  function emptyLine(): Line {
     return {
       uid: newLineId(),
       panel: "",
@@ -164,8 +180,11 @@ export function EstimateForm({
       orientation: "HORIZONTAL",
       aluminum: false,
       glue: false,
+      dap: false,
+      paintReserve: false,
+      extraWu: 0,
       laborHours: 0,
-      laborRate: defaultRateAmount(discount),
+      laborRate: defaultRateAmount(),
       laborRateId: defaultCatalog?.id ?? null,
       partsCost: 0,
       paintCost: 0,
@@ -175,14 +194,13 @@ export function EstimateForm({
   function makeLine(
     patch: Partial<Omit<Line, "orientation">> & { orientation?: string | null } = {},
     keepStoredRate = false,
-    discount = activeDiscount,
   ): Line {
-    const base = emptyLine(discount);
+    const base = emptyLine();
     const rateId = keepStoredRate
       ? (patch.laborRateId ?? null)
       : (patch.laborRateId ?? defaultCatalog?.id ?? null);
     const catalog = (rateId && catalogById[rateId]) || defaultCatalog;
-    const computed = catalog ? pricedHourly(catalog.amount, discount) : defaultRateAmount(discount);
+    const computed = catalog ? pricedHourly(catalog.amount) : defaultRateAmount();
     return {
       ...base,
       ...patch,
@@ -191,13 +209,18 @@ export function EstimateForm({
       orientation: patch.orientation === "VERTICAL" ? "VERTICAL" : "HORIZONTAL",
       aluminum: Boolean(patch.aluminum),
       glue: Boolean(patch.glue),
+      dap: Boolean(patch.dap),
+      paintReserve: Boolean(patch.paintReserve),
+      extraWu: Number(patch.extraWu) || 0,
+      laborHours: patch.repairMethod === "PANEL_REPLACEMENT" ? 0 : (Number(patch.laborHours) || base.laborHours),
+      repairMethod: patch.repairMethod === "PANEL_REPLACEMENT" ? "PANEL_REPLACEMENT" : "PDR",
       laborRateId: rateId || (!keepStoredRate ? defaultCatalog?.id ?? null : null),
       laborRate: keepStoredRate && patch.laborRate != null ? Number(patch.laborRate) : computed,
     };
   }
 
-  const [lines, setLines] = useState<Line[]>(
-    initial?.lineItems?.length
+  const [lines, setLines] = useState<Line[]>(() => {
+    const mapped = initial?.lineItems?.length
       ? initial.lineItems.map((line) =>
           makeLine(
             {
@@ -209,12 +232,16 @@ export function EstimateForm({
             true,
           ),
         )
-      : [makeLine()],
-  );
+      : [makeLine()];
+    return applyHagelHoursToLines(mapped, hagel, {
+      preparation: Boolean(initial?.applyVehiclePrep),
+      finish: Boolean(initial?.applyVehicleFinish),
+    });
+  });
 
   const filteredVehicles = useMemo(
-    () => (clientId ? vehicles.filter((v) => v.clients.some((c) => c.clientId === clientId)) : vehicles),
-    [clientId, vehicles],
+    () => (clientId ? vehicleList.filter((v) => v.clients.some((c) => c.clientId === clientId)) : vehicleList),
+    [clientId, vehicleList],
   );
 
   const totals = computeEstimateTotals({
@@ -224,22 +251,30 @@ export function EstimateForm({
     taxRate: vat,
   });
 
-  function repriceLines(current: Line[], discount: number) {
-    return current.map((line) => {
-      const catalog = (line.laborRateId && catalogById[line.laborRateId]) || defaultCatalog;
-      if (!catalog) return line;
-      return { ...line, laborRate: pricedHourly(catalog.amount, discount) };
-    });
+  function withHagel(current: Line[], extras = vehicleExtras) {
+    return applyHagelHoursToLines(current, hagel, extras);
   }
 
-  function withHagel(current: Line[]) {
-    return applyHagelHoursToLines(current, hagel);
+  function toggleVehicleExtra(key: "preparation" | "finish", on: boolean) {
+    const extras = { ...vehicleExtras, [key]: on };
+    setVehicleExtras(extras);
+    setLines((prev) => withHagel(prev, extras));
   }
 
   function updateLine(index: number, patch: Partial<Line>) {
     setLines((prev) => {
       const next = prev.map((line, i) => (i === index ? { ...line, ...patch } : line));
-      const hagelFields = ["dentCount", "dentSize", "orientation", "aluminum", "glue", "repairMethod", "panel"];
+      const hagelFields = [
+        "dentCount",
+        "dentSize",
+        "orientation",
+        "aluminum",
+        "glue",
+        "dap",
+        "extraWu",
+        "repairMethod",
+        "panel",
+      ];
       if (Object.keys(patch).some((key) => hagelFields.includes(key))) return withHagel(next);
       return next;
     });
@@ -250,7 +285,7 @@ export function EstimateForm({
       ...lines.filter((line) => line.uid !== draft.uid && line.panel !== draft.panel),
       { ...makeLine(draft), uid: draft.uid || "draft" },
     ];
-    return firstPdrLineIndex(simulated) === simulated.length - 1 ? hagelVehicleExtrasWu(hagel) : 0;
+    return firstPdrLineIndex(simulated) === simulated.length - 1 ? hagelVehicleExtrasWu(hagel, vehicleExtras) : 0;
   }
 
   function openPanel(panel: string) {
@@ -352,6 +387,8 @@ export function EstimateForm({
       clientNotes: fd.get("clientNotes"),
       includePhotos: fd.get("includePhotos") === "on",
       dismantlingAmount,
+      applyVehiclePrep: Boolean(vehicleExtras.preparation),
+      applyVehicleFinish: Boolean(vehicleExtras.finish),
       servicePricing,
       lineItems: withHagel(lines).map(({ uid: _uid, ...line }, i) => ({
         ...line,
@@ -379,6 +416,7 @@ export function EstimateForm({
   const editingLine = editingPanel ? lines.find((line) => line.panel === editingPanel) : undefined;
 
   return (
+    <>
     <form
       id="estimate-form"
       className="space-y-5"
@@ -408,11 +446,8 @@ export function EstimateForm({
             value={clientId}
             onChange={(e) => {
               const nextId = e.target.value;
-              const nextDiscount = Number(clients.find((c) => c.id === nextId)?.discountPercent) || 0;
               setClientId(nextId);
               setVehicleId(firstVehicleIdFor(nextId));
-              setApplyDiscount(true);
-              setLines((prev) => repriceLines(prev, nextDiscount));
             }}
           >
             <option value="">Sélectionner…</option>
@@ -424,7 +459,8 @@ export function EstimateForm({
             ))}
           </Select>
         </Field>
-        <Field label="Véhicule">
+        <div>
+          <span className="label">Véhicule</span>
           <Select value={vehicleId} onChange={(e) => setVehicleId(e.target.value)}>
             <option value="">Sélectionner…</option>
             {filteredVehicles.map((v) => (
@@ -433,7 +469,16 @@ export function EstimateForm({
               </option>
             ))}
           </Select>
-        </Field>
+          {clientId ? (
+            <button
+              type="button"
+              className="mt-1.5 text-sm font-semibold text-navy hover:underline"
+              onClick={() => setVehicleModal(true)}
+            >
+              + Ajouter un véhicule
+            </button>
+          ) : null}
+        </div>
         <label className="flex items-end gap-2 pb-2 text-sm">
           <input type="checkbox" name="includePhotos" defaultChecked={initial?.includePhotos} />
           Inclure les photos sur le PDF
@@ -456,29 +501,30 @@ export function EstimateForm({
         <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
           <div className="space-y-2">
             <h2 className="font-semibold text-navy">Lignes de dommages</h2>
-            {clientDiscount > 0 ? (
-              <label className="flex max-w-xl cursor-pointer items-start gap-2.5 rounded-lg border border-line bg-mist px-3 py-2 text-sm">
+            <div className="flex flex-wrap gap-4 text-sm text-navy">
+              <label className="flex items-center gap-2">
                 <input
                   type="checkbox"
-                  className="mt-0.5"
-                  checked={applyDiscount}
-                  onChange={(e) => {
-                    const on = e.target.checked;
-                    setApplyDiscount(on);
-                    setLines((prev) => repriceLines(prev, on ? clientDiscount : 0));
-                  }}
+                  checked={Boolean(vehicleExtras.preparation)}
+                  onChange={(e) => toggleVehicleExtra("preparation", e.target.checked)}
                 />
-                <span className="font-semibold text-navy">
-                  Appliquer la remise client ({clientDiscount} %)
-                </span>
+                Préparation véhicule (+{hagelScaledWu(hagel, hagel.preparationWu)} UT)
               </label>
-            ) : null}
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={Boolean(vehicleExtras.finish)}
+                  onChange={(e) => toggleVehicleExtra("finish", e.target.checked)}
+                />
+                Finition véhicule (+{hagelScaledWu(hagel, hagel.finishVehicle)} UT)
+              </label>
+            </div>
           </div>
           <Button type="button" variant="ghost" onClick={() => setLines((l) => [...l, makeLine()])}>
             <Plus size={16} /> Ligne
           </Button>
         </div>
-        <table className="table line-table min-w-[1100px]">
+        <table className="table line-table min-w-[1180px]">
           <colgroup>
             <col className="w-8" />
             <col />
@@ -486,9 +532,11 @@ export function EstimateForm({
             <col className="w-[8rem]" />
             <col className="w-[3.75rem]" />
             <col className="w-[6.5rem]" />
-            <col className="w-[5.5rem]" />
             <col className="w-10" />
             <col className="w-10" />
+            <col className="w-10" />
+            <col className="w-10" />
+            <col className="w-[4rem]" />
             <col className="w-[4.25rem]" />
             <col className="w-[4.5rem]" />
             <col className="w-[4.5rem]" />
@@ -504,9 +552,11 @@ export function EstimateForm({
               <th>Méthode</th>
               <th>Nb</th>
               <th>Taille mm</th>
-              <th>Orient.</th>
               <th title="Aluminium">Alu</th>
-              <th title="Collage / traction">Col.</th>
+              <th title="DAP">DAP</th>
+              <th title="Colle">Col.</th>
+              <th title="Réserve peinture">RP</th>
+              <th title="Extra UT">Ex UT</th>
               <th>Heures</th>
               <th>Taux</th>
               <th>Pièces</th>
@@ -575,13 +625,13 @@ export function EstimateForm({
                   <td>
                     <Select
                       className="table-select"
-                      value={line.repairMethod}
-                      title={REPAIR_METHODS.find((m) => m.value === line.repairMethod)?.label}
+                      value={line.repairMethod === "CONVENTIONAL" ? "PDR" : line.repairMethod}
+                      title={ESTIMATE_REPAIR_METHODS.find((m) => m.value === (line.repairMethod === "CONVENTIONAL" ? "PDR" : line.repairMethod))?.label}
                       onChange={(e) =>
                         updateLine(i, { repairMethod: e.target.value as Line["repairMethod"] })
                       }
                     >
-                      {REPAIR_METHODS.map((d) => (
+                      {ESTIMATE_REPAIR_METHODS.map((d) => (
                         <option key={d.value} value={d.value}>
                           {METHOD_SHORT[d.value]}
                         </option>
@@ -589,41 +639,34 @@ export function EstimateForm({
                     </Select>
                   </td>
                   <td>
-                    <Input
-                      type="number"
-                      min={0}
-                      value={line.dentCount}
-                      onChange={(e) => updateLine(i, { dentCount: Number(e.target.value) })}
-                      className="table-num"
-                    />
+                    {line.repairMethod === "PANEL_REPLACEMENT" ? (
+                      <span className="block text-center text-slate-400">—</span>
+                    ) : (
+                      <Input
+                        type="number"
+                        min={0}
+                        value={line.dentCount}
+                        onChange={(e) => updateLine(i, { dentCount: Number(e.target.value) })}
+                        className="table-num"
+                      />
+                    )}
                   </td>
                   <td>
-                    <Select
-                      className="table-select"
-                      value={String(line.dentSize)}
-                      onChange={(e) => updateLine(i, { dentSize: Number(e.target.value) })}
-                    >
-                      {hagelSizeOptions(hagel).map((size) => (
-                        <option key={size} value={size}>
-                          {size}
-                        </option>
-                      ))}
-                    </Select>
-                  </td>
-                  <td>
-                    <Select
-                      className="table-select"
-                      value={line.orientation}
-                      onChange={(e) =>
-                        updateLine(i, { orientation: e.target.value as Line["orientation"] })
-                      }
-                    >
-                      {DENT_ORIENTATIONS.map((item) => (
-                        <option key={item.value} value={item.value}>
-                          {item.value === "HORIZONTAL" ? "H" : "V"}
-                        </option>
-                      ))}
-                    </Select>
+                    {line.repairMethod === "PANEL_REPLACEMENT" ? (
+                      <span className="block text-center text-slate-400">—</span>
+                    ) : (
+                      <Select
+                        className="table-select"
+                        value={String(line.dentSize)}
+                        onChange={(e) => updateLine(i, { dentSize: Number(e.target.value) })}
+                      >
+                        {hagelSizeOptions(hagel).map((size) => (
+                          <option key={size} value={size}>
+                            {size}
+                          </option>
+                        ))}
+                      </Select>
+                    )}
                   </td>
                   <td className="text-center">
                     <input
@@ -636,28 +679,64 @@ export function EstimateForm({
                   <td className="text-center">
                     <input
                       type="checkbox"
+                      checked={line.dap}
+                      aria-label="DAP"
+                      onChange={(e) => updateLine(i, { dap: e.target.checked })}
+                    />
+                  </td>
+                  <td className="text-center">
+                    <input
+                      type="checkbox"
                       checked={line.glue}
-                      aria-label="Collage"
+                      aria-label="Colle"
                       onChange={(e) => updateLine(i, { glue: e.target.checked })}
                     />
                   </td>
-                  <td>
-                    <Input
-                      type="number"
-                      min={0}
-                      step="0.1"
-                      value={line.laborHours}
-                      readOnly={line.repairMethod === "PDR"}
-                      title={line.repairMethod === "PDR" ? "Heures calculées Hagel Expert" : undefined}
-                      onChange={(e) => {
-                        if (line.repairMethod === "PDR") return;
-                        updateLine(i, { laborHours: Number(e.target.value) });
-                      }}
-                      className="table-num"
+                  <td className="text-center">
+                    <input
+                      type="checkbox"
+                      checked={line.paintReserve}
+                      aria-label="Réserve peinture"
+                      onChange={(e) => updateLine(i, { paintReserve: e.target.checked })}
                     />
                   </td>
                   <td>
-                    {visibleRates.length > 1 ? (
+                    {line.repairMethod === "PANEL_REPLACEMENT" ? (
+                      <span className="block text-center text-slate-400">—</span>
+                    ) : (
+                      <Input
+                        type="number"
+                        min={0}
+                        step="0.1"
+                        value={line.extraWu}
+                        onChange={(e) => updateLine(i, { extraWu: Number(e.target.value) || 0 })}
+                        className="table-num"
+                      />
+                    )}
+                  </td>
+                  <td>
+                    {line.repairMethod === "PANEL_REPLACEMENT" ? (
+                      <span className="block text-center text-slate-400">—</span>
+                    ) : (
+                      <Input
+                        type="number"
+                        min={0}
+                        step="0.1"
+                        value={line.laborHours}
+                        readOnly={line.repairMethod === "PDR"}
+                        title={line.repairMethod === "PDR" ? "Heures calculées Hagel Expert" : undefined}
+                        onChange={(e) => {
+                          if (line.repairMethod === "PDR") return;
+                          updateLine(i, { laborHours: Number(e.target.value) });
+                        }}
+                        className="table-num"
+                      />
+                    )}
+                  </td>
+                  <td>
+                    {line.repairMethod === "PANEL_REPLACEMENT" ? (
+                      <span className="block text-center text-slate-400">—</span>
+                    ) : visibleRates.length > 1 ? (
                       <Select
                         className="table-select"
                         value={line.laborRateId || defaultCatalog?.id || ""}
@@ -739,7 +818,7 @@ export function EstimateForm({
         <div className="card space-y-4 p-6">
           <h2 className="font-semibold text-navy">Forfaits par service</h2>
           <div className="space-y-3">
-            {SERVICE_KEYS.map((key) => (
+            {FORFAIT_SERVICE_KEYS.map((key) => (
               <div key={key} className="grid grid-cols-[7.5rem_8rem_1fr] items-center gap-2">
                 <span className="text-sm font-medium text-navy">{SERVICE_LABELS[key]}</span>
                 <Select
@@ -747,7 +826,17 @@ export function EstimateForm({
                   value={servicePricing[key].mode}
                   onChange={(e) => {
                     const mode = e.target.value === "FIXED" ? "FIXED" : "HOURLY";
-                    setServicePricing((prev) => ({ ...prev, [key]: { ...prev[key], mode } }));
+                    setServicePricing((prev) => {
+                      const amount =
+                        mode === "FIXED" && !(Number(prev[key].amount) > 0)
+                          ? round2(
+                              lines
+                                .filter((line) => line.repairMethod === key)
+                                .reduce((sum, line) => sum + computeLineLabor(line), 0),
+                            )
+                          : prev[key].amount;
+                      return { ...prev, [key]: { ...prev[key], mode, amount } };
+                    });
                   }}
                 >
                   <option value="HOURLY">Horaire</option>
@@ -785,20 +874,12 @@ export function EstimateForm({
         <div className="card space-y-3 p-6">
           <h2 className="font-semibold text-navy">Total réparation</h2>
           <dl className="space-y-2 text-sm">
-            {SERVICE_KEYS.map((key) => (
-              <div key={key} className="flex justify-between">
-                <dt>{SERVICE_LABELS[key]}</dt>
-                <dd>{formatCurrency(totals.services[key])}</dd>
+            {serviceTotalRows(totals, true).map((row) => (
+              <div key={row.label} className="flex justify-between">
+                <dt>{row.label}</dt>
+                <dd>{formatCurrency(row.value)}</dd>
               </div>
             ))}
-            <div className="flex justify-between">
-              <dt>{SERVICE_LABELS.paint}</dt>
-              <dd>{formatCurrency(totals.services.paint)}</dd>
-            </div>
-            <div className="flex justify-between">
-              <dt>{SERVICE_LABELS.dismantling}</dt>
-              <dd>{formatCurrency(totals.services.dismantling)}</dd>
-            </div>
           </dl>
         </div>
         <div className="card space-y-4 p-6">
@@ -840,6 +921,7 @@ export function EstimateForm({
           Annuler
         </Button>
       </div>
+    </form>
       {panelDraft && editingPanel ? (
         <PanelLineDialog
           open
@@ -856,6 +938,37 @@ export function EstimateForm({
           onRemove={editingLine ? () => removePanel(editingPanel) : undefined}
         />
       ) : null}
-    </form>
+      {vehicleModal && clientId ? (
+        <div className="modal-overlay" role="presentation" onClick={() => setVehicleModal(false)}>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="new-vehicle-title"
+            className="modal-card modal-card-wide"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="border-b border-line px-5 py-4">
+              <h2 id="new-vehicle-title" className="text-lg font-semibold text-navy">
+                Ajouter un véhicule
+              </h2>
+              <p className="mt-1 text-sm text-slate-500">Le véhicule sera lié au client du devis.</p>
+            </div>
+            <div className="p-5">
+              <VehicleForm
+                clients={clients.filter((c) => c.id === clientId)}
+                lockToClientId={clientId}
+                compact
+                onCancel={() => setVehicleModal(false)}
+                onSaved={(vehicle) => {
+                  setVehicleList((prev) => [...prev, vehicle]);
+                  setVehicleId(vehicle.id);
+                  setVehicleModal(false);
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </>
   );
 }

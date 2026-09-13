@@ -190,21 +190,23 @@ export function InvoiceButton({ id }: { id: string }) {
 export function EmailEstimate({
   id,
   defaultTo,
+  defaultCc,
   estimateNumber,
   companyName = "DMK Services",
   vehicle,
 }: {
   id: string;
   defaultTo?: string | null;
+  defaultCc?: string | null;
   estimateNumber: string;
   companyName?: string;
   vehicle: VehicleMailInfo;
 }) {
   const defaultSubject = estimateMailSubject(vehicle);
-  const defaultMessage = estimateMailMessage(estimateNumber, vehicle, companyName);
+  const defaultMessage = estimateMailMessage(estimateNumber, vehicle, companyName, defaultCc);
   const [open, setOpen] = useState(false);
   const [to, setTo] = useState(defaultTo ?? "");
-  const [cc, setCc] = useState("");
+  const [cc, setCc] = useState(defaultCc ?? "");
   const [subject, setSubject] = useState(defaultSubject);
   const [message, setMessage] = useState(defaultMessage);
   const [msg, setMsg] = useState<string | null>(null);
@@ -213,7 +215,7 @@ export function EmailEstimate({
 
   function openModal() {
     setTo(defaultTo ?? "");
-    setCc("");
+    setCc(defaultCc ?? "");
     setSubject(defaultSubject);
     setMessage(defaultMessage);
     setMsg(null);

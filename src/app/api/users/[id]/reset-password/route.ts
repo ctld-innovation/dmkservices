@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { canAdmin, getSession, unauthorized, forbidden, jsonError } from "@/lib/auth";
-import { requestOrigin, smtpConfigured, loadCompanySettings } from "@/lib/mail";
+import { requestOrigin, smtpConfigured, loadCompanySettings, smtpErrorMessage } from "@/lib/mail";
 import { issueAndSendPasswordReset } from "@/lib/passwordReset";
 import { writeAudit } from "@/lib/audit";
 
@@ -31,8 +31,8 @@ export async function POST(
       user,
       origin: requestOrigin(req),
     });
-  } catch {
-    return jsonError("Envoi du lien impossible. Vérifiez la configuration SMTP.");
+  } catch (error) {
+    return jsonError(smtpErrorMessage(error));
   }
 
   await writeAudit(session, "User", id, "PASSWORD_RESET_REQUEST", { byAdmin: true });

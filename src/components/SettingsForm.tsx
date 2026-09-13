@@ -8,6 +8,7 @@ import { Button, ErrorText, Field, Input, Textarea } from "@/components/ui";
 import { DiagramMappingEditor } from "@/components/DiagramMappingEditor";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { UsersSettings, type UserRow } from "@/components/UsersSettings";
+import { BackupSettings } from "@/components/BackupSettings";
 import type { DiagramMaps } from "@/lib/diagram";
 import type { SessionUser } from "@/lib/auth";
 import Link from "next/link";
@@ -46,7 +47,11 @@ export function SettingsForm({
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
   const [panelLabel, setPanelLabel] = useState("");
-  const [pendingLookupId, setPendingLookupId] = useState<string | null>(null);
+  const [pendingLookup, setPendingLookup] = useState<LookupValue | null>(null);
+  const [editingLookup, setEditingLookup] = useState<LookupValue | null>(null);
+  const [editLabel, setEditLabel] = useState("");
+  const [editError, setEditError] = useState<string | null>(null);
+  const [savingLookup, setSavingLookup] = useState(false);
   const [deletingLookup, setDeletingLookup] = useState(false);
 
   async function saveCompany(e: FormEvent<HTMLFormElement>) {
@@ -130,25 +135,73 @@ export function SettingsForm({
 
   async function addPanel() {
     if (!panelLabel.trim()) return;
-    await fetch("/api/lookups", {
+    setError(null);
+    const res = await fetch("/api/lookups", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ category: "PANEL", label: panelLabel }),
     });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setError(data.error || "Impossible d'ajouter cette pièce");
+      return;
+    }
     setPanelLabel("");
+    setTab("lookups");
+    router.refresh();
+  }
+
+  function openEditLookup(item: LookupValue) {
+    setEditingLookup(item);
+    setEditLabel(item.label);
+    setEditError(null);
+  }
+
+  async function saveLookupName(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!editingLookup) return;
+    const label = editLabel.trim();
+    if (!label) {
+      setEditError("Libellé requis");
+      return;
+    }
+    setSavingLookup(true);
+    setEditError(null);
+    setError(null);
+    const res = await fetch("/api/lookups", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: editingLookup.id, label }),
+    });
+    const data = await res.json().catch(() => ({}));
+    setSavingLookup(false);
+    if (!res.ok) {
+      setEditError(data.error || "Impossible de modifier cette pièce");
+      return;
+    }
+    setEditingLookup(null);
+    setTab("lookups");
     router.refresh();
   }
 
   async function removeLookup() {
-    if (!pendingLookupId) return;
+    if (!pendingLookup) return;
     setDeletingLookup(true);
-    await fetch("/api/lookups", {
+    setError(null);
+    const res = await fetch("/api/lookups", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: pendingLookupId }),
+      body: JSON.stringify({ id: pendingLookup.id }),
     });
+    const data = await res.json().catch(() => ({}));
     setDeletingLookup(false);
-    setPendingLookupId(null);
+    if (!res.ok) {
+      setError(data.error || "Impossible de retirer cette pièce");
+      setPendingLookup(null);
+      return;
+    }
+    setPendingLookup(null);
+    setTab("lookups");
     router.refresh();
   }
 
@@ -265,10 +318,20 @@ export function SettingsForm({
             <Field label="Mot de passe">
               <Input name="smtpPass" type="password" defaultValue={settings.smtpPass ? "********" : ""} />
             </Field>
-            <Field label="Expéditeur">
-              <Input name="smtpFrom" defaultValue={settings.smtpFrom ?? ""} />
+            <Field
+              label="Expéditeur"
+              hint="Nom affiché, ou Nom <compte SMTP>. Une autre adresse n'est acceptée que si c'est un alias du même domaine."
+            >
+              <Input
+                name="smtpFrom"
+                defaultValue={settings.smtpFrom ?? ""}
+                placeholder='DMK Services <noreply@dmkservices.fr>'
+              />
             </Field>
-            <Field label="Répondre à" hint="Adresse de réponse vue par le destinataire">
+            <Field
+              label="Répondre à"
+              hint="Adresse de contact (ex. une autre boîte). C'est elle qui reçoit les réponses, pas l'expéditeur technique."
+            >
               <Input name="smtpReplyTo" type="email" defaultValue={settings.smtpReplyTo ?? ""} />
             </Field>
           </div>
@@ -289,18 +352,24 @@ export function SettingsForm({
               Ajouter
             </Button>
           </div>
+          <ErrorText message={error} />
           <ul className="columns-2 gap-4 text-sm sm:columns-3">
             {lookups
-              .filter((l) => l.category === "PANEL")
+              .filter((l) => l.category === "PANEL" && l.active)
               .slice()
-              .sort((a, b) => panelSortIndex(a.label) - panelSortIndex(b.label) || a.label.localeCompare(b.label, "fr"))
+              .sort((a, b) => a.sortOrder - b.sortOrder || panelSortIndex(a.label) - panelSortIndex(b.label) || a.label.localeCompare(b.label, "fr"))
               .map((l) => (
                 <li key={l.id} className="mb-1 flex items-center justify-between gap-2 break-inside-avoid">
                   <span>{l.label}</span>
                   {isAdmin ? (
-                    <button type="button" className="text-xs text-red-600" onClick={() => setPendingLookupId(l.id)}>
-                      Retirer
-                    </button>
+                    <span className="flex shrink-0 items-center gap-2">
+                      <button type="button" className="text-xs text-navy" onClick={() => openEditLookup(l)}>
+                        Modifier
+                      </button>
+                      <button type="button" className="text-xs text-red-600" onClick={() => setPendingLookup(l)}>
+                        Retirer
+                      </button>
+                    </span>
                   ) : null}
                 </li>
               ))}
@@ -360,28 +429,55 @@ export function SettingsForm({
         </div>
       ) : null}
 
-      {tab === "backup" ? (
-        <div className="card space-y-3 p-6">
-          <p className="text-sm text-slate-600">
-            Téléchargez une sauvegarde JSON de l&apos;ensemble des données. La base MySQL se configure via{" "}
-            <code>DATABASE_URL</code>.
-          </p>
-          {isAdmin ? (
-            <a href="/api/backup" className="btn btn-primary inline-flex">
-              Télécharger la sauvegarde JSON
-            </a>
-          ) : (
-            <p className="text-sm">Réservé à l&apos;administrateur.</p>
-          )}
+      {tab === "backup" ? <BackupSettings isAdmin={isAdmin} /> : null}
+      {editingLookup ? (
+        <div className="modal-overlay" role="presentation" onClick={() => !savingLookup && setEditingLookup(null)}>
+          <form
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="edit-panel-title"
+            className="modal-card modal-card-sm"
+            onClick={(e) => e.stopPropagation()}
+            onSubmit={saveLookupName}
+          >
+            <div className="px-5 py-4">
+              <h2 id="edit-panel-title" className="text-lg font-semibold text-navy">
+                Modifier le nom
+              </h2>
+              <div className="mt-3">
+                <Field label="Nom du panneau">
+                  <Input
+                    value={editLabel}
+                    onChange={(e) => setEditLabel(e.target.value)}
+                    autoFocus
+                    required
+                  />
+                </Field>
+              </div>
+              <ErrorText message={editError} />
+            </div>
+            <div className="flex justify-end gap-2 border-t border-line px-5 py-4">
+              <Button type="button" variant="ghost" onClick={() => setEditingLookup(null)} disabled={savingLookup}>
+                Annuler
+              </Button>
+              <Button type="submit" disabled={savingLookup}>
+                {savingLookup ? "Enregistrement…" : "Enregistrer"}
+              </Button>
+            </div>
+          </form>
         </div>
       ) : null}
       <ConfirmDialog
-        open={Boolean(pendingLookupId)}
-        title="Retirer cette pièce ?"
-        message="Elle disparaîtra des listes utilisées pour les devis."
+        open={Boolean(pendingLookup)}
+        title={pendingLookup ? `Retirer « ${pendingLookup.label} » ?` : "Retirer cette pièce ?"}
+        message={
+          pendingLookup
+            ? `« ${pendingLookup.label} » disparaîtra des listes utilisées pour les devis.`
+            : ""
+        }
         busy={deletingLookup}
         confirmLabel="Retirer"
-        onCancel={() => !deletingLookup && setPendingLookupId(null)}
+        onCancel={() => !deletingLookup && setPendingLookup(null)}
         onConfirm={() => void removeLookup()}
       />
     </div>

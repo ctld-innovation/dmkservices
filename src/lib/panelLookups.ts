@@ -4,10 +4,16 @@ import { DEFAULT_PANELS } from "@/lib/constants";
 const OLD_HATCH = "Coffre / hayon";
 const UPPER_HATCH = "Coffre supérieur";
 
+function catalogKey(item: { label: string; value: string }) {
+  if (DEFAULT_PANELS.includes(item.label)) return item.label;
+  if (DEFAULT_PANELS.includes(item.value)) return item.value;
+  return null;
+}
+
 export async function syncPanelLookups() {
   const existing = await prisma.lookupValue.findMany({
     where: { category: "PANEL" },
-    select: { id: true, label: true, sortOrder: true, active: true },
+    select: { id: true, label: true, value: true, sortOrder: true, active: true },
   });
   const byLabel = new Map(existing.map((item) => [item.label, item]));
 
@@ -31,7 +37,14 @@ export async function syncPanelLookups() {
     data: { panel: UPPER_HATCH },
   });
 
-  const missing = DEFAULT_PANELS.filter((label) => !byLabel.has(label));
+  // Ne pas recréer un panneau déjà présent (inactif ou renommé, via label ou value).
+  const covered = new Set(
+    existing.flatMap((item) => {
+      const key = catalogKey(item);
+      return key ? [key] : [];
+    }),
+  );
+  const missing = DEFAULT_PANELS.filter((label) => !covered.has(label) && !byLabel.has(label));
   if (missing.length) {
     await prisma.lookupValue.createMany({
       data: missing.map((label) => ({
@@ -46,12 +59,12 @@ export async function syncPanelLookups() {
 
   const current = await prisma.lookupValue.findMany({
     where: { category: "PANEL" },
-    select: { id: true, label: true, sortOrder: true },
+    select: { id: true, label: true, value: true, sortOrder: true },
   });
   const orderUpdates = current.flatMap((item) => {
-    const sortOrder = DEFAULT_PANELS.includes(item.label)
-      ? DEFAULT_PANELS.indexOf(item.label)
-      : DEFAULT_PANELS.length + item.sortOrder;
+    const key = catalogKey(item);
+    if (!key) return [];
+    const sortOrder = DEFAULT_PANELS.indexOf(key);
     return item.sortOrder === sortOrder ? [] : [{ id: item.id, sortOrder }];
   });
   if (orderUpdates.length) {

@@ -107,7 +107,7 @@ export default async function EstimateDetailPage({ params }: { params: Promise<{
           <thead>
             <tr>
               <th rowSpan={2}>Pièce</th>
-              <th colSpan={5} className="text-center">
+              <th colSpan={METHOD_FLAG_COLUMNS.length} className="text-center">
                 Méthode
               </th>
               <th rowSpan={2}>Taille</th>

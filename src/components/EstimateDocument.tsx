@@ -114,7 +114,7 @@ export function EstimateDocument({
             <th rowSpan={2} className="border border-navy/40 px-1.5 py-1.5 text-left font-bold">
               Pièce
             </th>
-            <th colSpan={5} className="border border-navy/40 px-1.5 py-1.5 text-center font-bold">
+            <th colSpan={METHOD_FLAG_COLUMNS.length} className="border border-navy/40 px-1.5 py-1.5 text-center font-bold">
               Méthode
             </th>
             <th rowSpan={2} className="border border-navy/40 px-1.5 py-1.5 text-left font-bold">

@@ -162,11 +162,12 @@ export function computeEstimateTotals(estimate: {
   };
 }
 
-export const METHOD_FLAG_COLUMNS = ["DSP", "DAP", "ALU", "COL", "RP"] as const;
+export const METHOD_FLAG_COLUMNS = ["DSP", "DAP", "REP", "ALU", "COL", "RP"] as const;
 
 export const METHOD_ABBREV_LEGEND = [
   { code: "DSP", label: "Débosselage sans peinture" },
   { code: "DAP", label: "Débosselage avec peinture" },
+  { code: "REP", label: "Remplacement de pièce" },
   { code: "ALU", label: "Aluminium" },
   { code: "COL", label: "Colle" },
   { code: "RP", label: "Réserve peinture" },
@@ -187,6 +188,7 @@ export function estimateLineMethodFlags(line: {
   return {
     DSP: line.repairMethod === "PDR" && !line.dap,
     DAP: Boolean(line.dap),
+    REP: line.repairMethod === "PANEL_REPLACEMENT",
     ALU: Boolean(line.aluminum),
     COL: Boolean(line.glue),
     RP: Boolean(line.paintReserve),

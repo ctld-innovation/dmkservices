@@ -333,7 +333,7 @@ export async function buildEstimatePdf(
     head: [
       [
         { content: "Pièce", rowSpan: 2 },
-        { content: "Méthode", colSpan: 5, styles: { halign: "center" } },
+        { content: "Méthode", colSpan: METHOD_FLAG_COLUMNS.length, styles: { halign: "center" } },
         { content: "Taille", rowSpan: 2 },
         { content: "Bosses", rowSpan: 2 },
         { content: "Heures", rowSpan: 2 },
@@ -366,11 +366,11 @@ export async function buildEstimatePdf(
     margin: { left: margin, right: margin },
     columnStyles: {
       0: { halign: "left" },
-      6: { halign: "right" },
       7: { halign: "right" },
       8: { halign: "right" },
       9: { halign: "right" },
-      10: { halign: "right", fontStyle: "bold" },
+      10: { halign: "right" },
+      11: { halign: "right", fontStyle: "bold" },
     },
   });
 

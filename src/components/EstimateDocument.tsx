@@ -3,8 +3,9 @@ import { computeEstimateTotalsWithSettings, isMethodFixed, estimateLineMethodFla
 import { EstimateTotalsPanels } from "@/components/EstimateTotalsPanels";
 import { clientLabel, formatCurrency, formatDate, fullName } from "@/lib/utils";
 import { sortByPanelOrder } from "@/lib/constants";
-import { CarDiagramSvg } from "@/components/CarPanelPicker";
+import { CarDiagramSvg, ExplodedColorLegend } from "@/components/CarPanelPicker";
 import { resolveDiagramPanelMap } from "@/lib/diagram";
+import { explodedKindStyles, explodedVisibleLegendKinds, explodedStylesFromLines } from "@/lib/explodedStyles";
 
 type EstimateDoc = Estimate & {
   client: Client;
@@ -31,6 +32,8 @@ export function EstimateDocument({
     dentCounts[line.panel] = (dentCounts[line.panel] ?? 0) + (Number(line.dentCount) || 0);
   }
   const selectedPanels = [...new Set(estimate.lineItems.map((line) => line.panel).filter(Boolean))];
+  const panelStyles = explodedStylesFromLines(estimate.lineItems);
+  const kindStyles = explodedKindStyles(settings?.explodedColors);
   const panelMap = resolveDiagramPanelMap(settings?.carDiagramMaps, "exploded", lookups);
   const companyLines = [
     [settings?.street, `${settings?.postalCode ?? ""} ${settings?.city ?? ""}`.trim(), settings?.country]
@@ -177,8 +180,15 @@ export function EstimateDocument({
             selected={selectedPanels}
             dentCounts={dentCounts}
             panelMap={panelMap}
+            panelStyles={panelStyles}
+            kindStyles={kindStyles}
             interactive={false}
             cropContent
+          />
+          <ExplodedColorLegend
+            kinds={explodedVisibleLegendKinds(selectedPanels, panelStyles, panelMap)}
+            kindStyles={kindStyles}
+            className="mt-1.5 justify-center text-[9px]"
           />
         </div>
       </section>

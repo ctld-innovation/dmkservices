@@ -144,6 +144,7 @@ export const settingsSchema = z.object({
   estimateSeqPad: z.number().int().min(3).max(8),
   carDiagram: z.enum(["assembled", "exploded"]).optional(),
   carDiagramMaps: z.record(z.string(), z.record(z.string(), z.string())).optional().nullable(),
+  explodedColors: z.unknown().optional().nullable(),
   hagelExpert: z.unknown().optional().nullable(),
   termsAndConditions: z.string().optional().nullable(),
   smtpHost: z.string().optional().nullable(),

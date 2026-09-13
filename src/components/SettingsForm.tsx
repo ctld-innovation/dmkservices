@@ -6,6 +6,7 @@ import type { CompanySettings, LookupValue } from "@prisma/client";
 import { resolveCarDiagram, panelSortIndex, type CarDiagram } from "@/lib/constants";
 import { Button, ErrorText, Field, Input, Textarea } from "@/components/ui";
 import { DiagramMappingEditor } from "@/components/DiagramMappingEditor";
+import { ExplodedColorsSettings } from "@/components/ExplodedColorsSettings";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { UsersSettings, type UserRow } from "@/components/UsersSettings";
 import { BackupSettings } from "@/components/BackupSettings";
@@ -389,6 +390,7 @@ export function SettingsForm({
             isAdmin={isAdmin}
             onSave={saveDiagram}
           />
+          <ExplodedColorsSettings initial={settings.explodedColors} isAdmin={isAdmin} />
         </div>
       ) : null}
 

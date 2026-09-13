@@ -13,6 +13,7 @@ import { computeLineTotal, computeLineLabor, computeEstimateTotals, parseService
 import { formatCurrency, toInputDate, cn, round2 } from "@/lib/utils";
 import { Button, ErrorText, Field, Input, Select, Textarea } from "@/components/ui";
 import { CarPanelPicker } from "@/components/CarPanelPicker";
+import { explodedKindStyles, explodedStylesFromLines } from "@/lib/explodedStyles";
 import { PanelLineDialog, type PanelLineDraft } from "@/components/PanelLineDialog";
 import { VehicleForm } from "@/components/VehicleForm";
 import {
@@ -70,6 +71,7 @@ export function EstimateForm({
   diagramStyle = "exploded",
   panelMap,
   hagelExpert,
+  explodedColors,
 }: {
   clients: Array<{
     id: string;
@@ -94,6 +96,7 @@ export function EstimateForm({
   diagramStyle?: "assembled" | "exploded";
   panelMap?: Record<string, string>;
   hagelExpert?: unknown;
+  explodedColors?: unknown;
   initial?: {
     date?: Date | string;
     damageDate?: Date | string | null;
@@ -523,6 +526,8 @@ export function EstimateForm({
           acc[line.panel] = (acc[line.panel] ?? 0) + (Number(line.dentCount) || 0);
           return acc;
         }, {})}
+        panelStyles={explodedStylesFromLines(lines)}
+        kindStyles={explodedKindStyles(explodedColors)}
         onToggle={openPanel}
         panelMap={panelMap}
       />

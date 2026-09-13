@@ -4,6 +4,12 @@ import { useState } from "react";
 import { cn } from "@/lib/utils";
 import type { CarDiagram } from "@/lib/constants";
 import { panelZoneId, EXPLODED_PANEL_SHAPES, EXPLODED_VIEW } from "@/lib/diagram";
+import {
+  explodedKindStyles,
+  explodedVisibleLegendKinds,
+  type ExplodedKindStyle,
+  type ExplodedPanelKind,
+} from "@/lib/explodedStyles";
 
 type PanelShape = {
   id: string;
@@ -26,6 +32,35 @@ const EXPLODED_LAYOUT = {
   badgeFont: 18,
 };
 
+export function ExplodedColorLegend({
+  kinds,
+  kindStyles,
+  className,
+}: {
+  kinds: ExplodedPanelKind[];
+  kindStyles?: Record<ExplodedPanelKind, ExplodedKindStyle>;
+  className?: string;
+}) {
+  if (!kinds.length) return null;
+  const palette = kindStyles ?? explodedKindStyles();
+  return (
+    <ul className={cn("flex flex-wrap gap-x-3 gap-y-1.5 text-[10px] leading-tight text-navy", className)}>
+      {kinds.map((kind) => {
+        const style = palette[kind];
+        return (
+          <li key={kind} className="flex items-center gap-1.5">
+            <span
+              className="inline-block h-2.5 w-2.5 shrink-0 rounded-sm border"
+              style={{ background: style.fill, borderColor: style.stroke }}
+            />
+            {style.label}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 export function CarDiagramSvg({
   selected,
   dentCounts,
@@ -34,6 +69,8 @@ export function CarDiagramSvg({
   onHover,
   onToggle,
   panelMap,
+  panelStyles,
+  kindStyles,
   activeZoneId,
   onSelectZone,
   cropContent = false,
@@ -46,6 +83,8 @@ export function CarDiagramSvg({
   onHover?: (label: string | null) => void;
   onToggle?: (panel: string) => void;
   panelMap?: Record<string, string>;
+  panelStyles?: Record<string, ExplodedPanelKind>;
+  kindStyles?: Record<ExplodedPanelKind, ExplodedKindStyle>;
   activeZoneId?: string | null;
   onSelectZone?: (zoneId: string) => void;
   cropContent?: boolean;
@@ -54,6 +93,7 @@ export function CarDiagramSvg({
   const [localHover, setLocalHover] = useState<string | null>(null);
   const selectedSet = new Set(selected);
   const mapping = onSelectZone != null;
+  const palette = kindStyles ?? explodedKindStyles();
   const pieceOf = (panel: PanelShape) => panelMap?.[panel.id] ?? panel.label;
   const badgeR = layout.badgeRadius;
   const badgeFont = layout.badgeFont;
@@ -84,6 +124,8 @@ export function CarDiagramSvg({
         const piece = pieceOf(panel);
         const isOn = mapping ? activeZoneId === panel.id : selectedSet.has(piece);
         const isHover = activeHover === piece || activeHover === panel.id;
+        const kind = !mapping && isOn ? panelStyles?.[piece] : undefined;
+        const kindStyle = kind ? palette[kind] : undefined;
         const activate = () => {
           if (mapping) onSelectZone?.(panel.id);
           else onToggle?.(piece);
@@ -121,12 +163,16 @@ export function CarDiagramSvg({
                 "transition duration-150",
                 layout.image
                   ? isOn
-                    ? "fill-amber/60 stroke-navy"
+                    ? kind
+                      ? "stroke-[1.75]"
+                      : "fill-amber/60 stroke-navy"
                     : isHover
                       ? "fill-amber/25 stroke-amber"
                       : "fill-transparent stroke-transparent"
                   : isOn
-                    ? "fill-amber stroke-navy"
+                    ? kind
+                      ? "stroke-[1.75]"
+                      : "fill-amber stroke-navy"
                     : isHover
                       ? "fill-white stroke-amber"
                       : "fill-white stroke-navy/50",
@@ -134,7 +180,15 @@ export function CarDiagramSvg({
               )}
               style={{
                 cursor: interactive ? "pointer" : "default",
-                filter: isOn ? "drop-shadow(0 0 4px rgb(0 217 245 / 50%))" : undefined,
+                ...(isOn && kind && kindStyle
+                  ? {
+                      fill: kindStyle.fill,
+                      stroke: kindStyle.stroke,
+                      filter: `drop-shadow(0 0 4px ${kindStyle.fill})`,
+                    }
+                  : isOn
+                    ? { filter: "drop-shadow(0 0 4px rgb(0 217 245 / 50%))" }
+                    : undefined),
               }}
             />
           </g>
@@ -204,6 +258,8 @@ export function CarPanelPicker({
   dentCounts,
   onToggle,
   panelMap,
+  panelStyles,
+  kindStyles,
   compact,
 }: {
   selected: string[];
@@ -211,10 +267,14 @@ export function CarPanelPicker({
   onToggle: (panel: string) => void;
   variant?: CarDiagram;
   panelMap?: Record<string, string>;
+  panelStyles?: Record<string, ExplodedPanelKind>;
+  kindStyles?: Record<ExplodedPanelKind, ExplodedKindStyle>;
   compact?: boolean;
 }) {
   const [hovered, setHovered] = useState<string | null>(null);
   const totalDents = Object.values(dentCounts).reduce((sum, n) => sum + n, 0);
+  const legendKinds = explodedVisibleLegendKinds(selected, panelStyles ?? {}, panelMap);
+  const palette = kindStyles ?? explodedKindStyles();
 
   return (
     <div className={compact ? "" : "card p-4"}>
@@ -235,29 +295,40 @@ export function CarPanelPicker({
             selected={selected}
             dentCounts={dentCounts}
             panelMap={panelMap}
+            panelStyles={panelStyles}
+            kindStyles={palette}
             hovered={hovered}
             onHover={setHovered}
             onToggle={onToggle}
           />
+          <ExplodedColorLegend kinds={legendKinds} kindStyles={palette} className="px-2 pb-1.5 pt-1" />
         </div>
 
         <div className="min-w-0 flex-1 text-sm">
           <p className="font-medium text-navy">{hovered ?? "Survolez un panneau"}</p>
           {selected.length ? (
             <ul className="mt-2 flex flex-wrap gap-1.5">
-              {selected.map((name) => (
-                <li key={name}>
-                  <button
-                    type="button"
-                    onClick={() => onToggle(name)}
-                    className="badge badge-amber cursor-pointer"
-                    title="Ouvrir"
-                  >
-                    {name}
-                    {dentCounts[name] ? ` · ${dentCounts[name]}` : ""}
-                  </button>
-                </li>
-              ))}
+              {selected.map((name) => {
+                const style = panelStyles?.[name] ? palette[panelStyles[name]] : undefined;
+                return (
+                  <li key={name}>
+                    <button
+                      type="button"
+                      onClick={() => onToggle(name)}
+                      className={cn("badge cursor-pointer", style ? "" : "badge-amber")}
+                      style={
+                        style
+                          ? { background: style.fill, borderColor: style.stroke, color: style.stroke }
+                          : undefined
+                      }
+                      title="Ouvrir"
+                    >
+                      {name}
+                      {dentCounts[name] ? ` · ${dentCounts[name]}` : ""}
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           ) : (
             <p className="mt-1 text-slate-500">Aucun panneau sélectionné.</p>

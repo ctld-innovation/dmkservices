@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { computeEstimateTotals, isMethodFixed, estimateLineMethodFlags, METHOD_FLAG_COLUMNS, methodFlagMark } from "@/lib/calculations";
+import { computeEstimateTotalsWithSettings, isMethodFixed, estimateLineMethodFlags, METHOD_FLAG_COLUMNS, methodFlagMark } from "@/lib/calculations";
 import { clientLabel, formatCurrency, formatDate, formatDateTime, fullName, vehicleLabel } from "@/lib/utils";
 import {
   ESTIMATE_STATUSES,
   STATUS_COLORS,
   labelOf,
+  sortByPanelOrder,
 } from "@/lib/constants";
 import { Card, PageHeader } from "@/components/ui";
 import { EstimateTotalsPanels } from "@/components/EstimateTotalsPanels";
@@ -18,7 +19,10 @@ export default async function EstimateDetailPage({ params }: { params: Promise<{
   const session = await getSession();
   const writable = session ? canWrite(session.role) : false;
   const [settings, estimate] = await Promise.all([
-    prisma.companySettings.findUnique({ where: { id: "default" }, select: { name: true } }),
+    prisma.companySettings.findUnique({
+      where: { id: "default" },
+      select: { name: true, hagelExpert: true, defaultLaborRate: true },
+    }),
     prisma.estimate.findUnique({
       where: { id },
       include: {
@@ -31,7 +35,7 @@ export default async function EstimateDetailPage({ params }: { params: Promise<{
     }),
   ]);
   if (!estimate) notFound();
-  const totals = computeEstimateTotals(estimate);
+  const totals = computeEstimateTotalsWithSettings(estimate, settings);
 
   return (
     <div>
@@ -58,6 +62,7 @@ export default async function EstimateDetailPage({ params }: { params: Promise<{
                 defaultTo={estimate.client.email}
                 estimateNumber={estimate.number}
                 companyName={settings?.name || "DMK Services"}
+                vehicle={estimate.vehicle}
               />
               <DuplicateEstimateButton id={id} />
               <DeleteButton
@@ -119,7 +124,7 @@ export default async function EstimateDetailPage({ params }: { params: Promise<{
             </tr>
           </thead>
           <tbody>
-            {estimate.lineItems.map((line) => {
+            {sortByPanelOrder(estimate.lineItems).map((line) => {
               const flags = estimateLineMethodFlags(line);
               const replacement = line.repairMethod === "PANEL_REPLACEMENT";
               return (

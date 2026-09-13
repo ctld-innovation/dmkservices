@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
-import { computeEstimateTotals } from "@/lib/calculations";
+import { computeEstimateTotalsWithSettings } from "@/lib/calculations";
 import { pagination, clientLabel, formatCurrency, formatDate, vehicleLabel } from "@/lib/utils";
 import { ESTIMATE_STATUSES, STATUS_COLORS, labelOf } from "@/lib/constants";
 import { Card, PageHeader, Pagination, EmptyState } from "@/components/ui";
@@ -33,13 +33,19 @@ export default async function EstimatesPage({
   };
   const total = await prisma.estimate.count({ where });
   const pager = pagination(total, page, 12);
-  const items = await prisma.estimate.findMany({
-    where,
-    orderBy: { date: "desc" },
-    skip: pager.skip,
-    take: pager.pageSize,
-    include: { client: true, vehicle: true, lineItems: true },
-  });
+  const [items, settings] = await Promise.all([
+    prisma.estimate.findMany({
+      where,
+      orderBy: { date: "desc" },
+      skip: pager.skip,
+      take: pager.pageSize,
+      include: { client: true, vehicle: true, lineItems: true },
+    }),
+    prisma.companySettings.findUnique({
+      where: { id: "default" },
+      select: { hagelExpert: true, defaultLaborRate: true },
+    }),
+  ]);
   const extra = `${q ? `&q=${encodeURIComponent(q)}` : ""}${status ? `&status=${status}` : ""}`;
 
   return (
@@ -85,7 +91,7 @@ export default async function EstimatesPage({
               </thead>
               <tbody>
                 {items.map((est) => {
-                  const totals = computeEstimateTotals(est);
+                  const totals = computeEstimateTotalsWithSettings(est, settings);
                   return (
                     <tr key={est.id}>
                       <td>

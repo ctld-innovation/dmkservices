@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button, Field, Input, Textarea } from "@/components/ui";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { ESTIMATE_STATUSES, labelOf } from "@/lib/constants";
+import { estimateMailMessage, estimateMailSubject, type VehicleMailInfo } from "@/lib/estimateMail";
 
 export function WriteOnly({
   canWrite,
@@ -191,14 +192,16 @@ export function EmailEstimate({
   defaultTo,
   estimateNumber,
   companyName = "DMK Services",
+  vehicle,
 }: {
   id: string;
   defaultTo?: string | null;
   estimateNumber: string;
   companyName?: string;
+  vehicle: VehicleMailInfo;
 }) {
-  const defaultSubject = `Devis ${estimateNumber} — ${companyName}`;
-  const defaultMessage = `Bonjour,\n\nVeuillez trouver ci-joint le devis ${estimateNumber}.\n\nCordialement,\n${companyName}`;
+  const defaultSubject = estimateMailSubject(vehicle);
+  const defaultMessage = estimateMailMessage(estimateNumber, vehicle, companyName);
   const [open, setOpen] = useState(false);
   const [to, setTo] = useState(defaultTo ?? "");
   const [cc, setCc] = useState("");
@@ -263,7 +266,7 @@ export function EmailEstimate({
               <Input value={subject} onChange={(e) => setSubject(e.target.value)} />
             </Field>
             <Field label="Message">
-              <Textarea rows={7} value={message} onChange={(e) => setMessage(e.target.value)} />
+              <Textarea rows={12} value={message} onChange={(e) => setMessage(e.target.value)} />
             </Field>
             <a
               href={`/api/estimates/${id}/pdf`}

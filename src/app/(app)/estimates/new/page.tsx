@@ -5,6 +5,7 @@ import { EstimateForm } from "@/components/EstimateForm";
 import { resolveDiagramPanelMap } from "@/lib/diagram";
 import { resolveCarDiagram } from "@/lib/constants";
 import { ensureLaborRates } from "@/lib/laborRates";
+import { syncPanelLookups } from "@/lib/panelLookups";
 
 export default async function NewEstimatePage({
   searchParams,
@@ -13,6 +14,7 @@ export default async function NewEstimatePage({
 }) {
   const session = await requireWriter();
   await ensureLaborRates();
+  await syncPanelLookups();
   const sp = await searchParams;
   const [clients, vehicles, panels, settings, laborRates] = await Promise.all([
     prisma.client.findMany({ where: { status: "ACTIVE" }, orderBy: { lastName: "asc" } }),

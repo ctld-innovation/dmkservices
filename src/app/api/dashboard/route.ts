@@ -1,14 +1,14 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession, unauthorized } from "@/lib/auth";
-import { computeEstimateTotals, sumEstimatesByStatus } from "@/lib/calculations";
+import { computeEstimateTotalsWithSettings, sumEstimatesByStatus } from "@/lib/calculations";
 import { ESTIMATE_STATUSES } from "@/lib/constants";
 
 export async function GET() {
   const session = await getSession();
   if (!session) return unauthorized();
 
-  const [clients, allEstimates, recent] = await Promise.all([
+  const [clients, allEstimates, recent, settings] = await Promise.all([
     prisma.client.groupBy({ by: ["type"], _count: { _all: true } }),
     prisma.estimate.findMany({
       select: {
@@ -18,6 +18,8 @@ export async function GET() {
         taxRate: true,
         servicePricing: true,
         dismantlingAmount: true,
+        applyVehiclePrep: true,
+        applyVehicleFinish: true,
         lineItems: {
           select: {
             laborHours: true,
@@ -37,9 +39,19 @@ export async function GET() {
       take: 8,
       include: { client: true, vehicle: true, lineItems: true },
     }),
+    prisma.companySettings.findUnique({
+      where: { id: "default" },
+      select: { hagelExpert: true, defaultLaborRate: true },
+    }),
   ]);
 
-  const byStatus = sumEstimatesByStatus(allEstimates);
+  const byStatus = sumEstimatesByStatus(
+    allEstimates.map((est) => ({
+      ...est,
+      hagelExpert: settings?.hagelExpert,
+      extrasLaborRate: settings?.defaultLaborRate,
+    })),
+  );
   const statusTotals = ESTIMATE_STATUSES.map((s) => ({
     status: s.value,
     label: s.label,
@@ -49,7 +61,7 @@ export async function GET() {
 
   const recentWithTotals = recent.map((est) => ({
     ...est,
-    totals: computeEstimateTotals(est),
+    totals: computeEstimateTotalsWithSettings(est, settings),
   }));
 
   const [clientCount, vehicleCount, estimateCount] = await Promise.all([

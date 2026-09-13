@@ -2,11 +2,12 @@
 
 import { DragEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { GripVertical, Plus, Trash2 } from "lucide-react";
+import { GripVertical, Plus, RefreshCw, Trash2 } from "lucide-react";
 import {
   DAMAGE_TYPES,
   ESTIMATE_REPAIR_METHODS,
   ESTIMATE_STATUSES,
+  sortByPanelOrder,
 } from "@/lib/constants";
 import { computeLineTotal, computeLineLabor, computeEstimateTotals, parseServicePricing, isMethodFixed, FORFAIT_SERVICE_KEYS, SERVICE_LABELS, serviceTotalRows, type ServicePricing } from "@/lib/calculations";
 import { formatCurrency, toInputDate, cn, round2 } from "@/lib/utils";
@@ -17,10 +18,8 @@ import { VehicleForm } from "@/components/VehicleForm";
 import {
   applyHagelHoursToLines,
   computeHagelHours,
-  firstPdrLineIndex,
   hagelScaledWu,
   hagelSizeOptions,
-  hagelVehicleExtrasWu,
   parseHagelExpertConfig,
   type HagelVehicleExtras,
 } from "@/lib/hagelExpert";
@@ -149,16 +148,19 @@ export function EstimateForm({
   const [dropIndex, setDropIndex] = useState<number | null>(null);
   const [editingPanel, setEditingPanel] = useState<string | null>(null);
   const [panelDraft, setPanelDraft] = useState<PanelLineDraft | null>(null);
-  const hagel = useMemo(() => parseHagelExpertConfig(hagelExpert), [hagelExpert]);
+  const [rateCatalog, setRateCatalog] = useState(laborRates);
+  const [hagelRaw, setHagelRaw] = useState(hagelExpert);
+  const [recalculating, setRecalculating] = useState(false);
+  const hagel = useMemo(() => parseHagelExpertConfig(hagelRaw), [hagelRaw]);
   const [vehicleExtras, setVehicleExtras] = useState<HagelVehicleExtras>({
     preparation: Boolean(initial?.applyVehiclePrep),
     finish: Boolean(initial?.applyVehicleFinish),
   });
 
-  const defaultCatalog = laborRates.find((r) => r.isDefault && r.active) ?? laborRates.find((r) => r.active);
+  const defaultCatalog = rateCatalog.find((r) => r.isDefault && r.active) ?? rateCatalog.find((r) => r.active);
   const catalogById = useMemo(
-    () => Object.fromEntries(laborRates.map((rate) => [rate.id, rate])),
-    [laborRates],
+    () => Object.fromEntries(rateCatalog.map((rate) => [rate.id, rate])),
+    [rateCatalog],
   );
   function pricedHourly(baseAmount: number) {
     return Number(baseAmount) || 0;
@@ -221,22 +223,21 @@ export function EstimateForm({
 
   const [lines, setLines] = useState<Line[]>(() => {
     const mapped = initial?.lineItems?.length
-      ? initial.lineItems.map((line) =>
-          makeLine(
-            {
-              ...line,
-              uid: line.uid || newLineId(),
-              laborHours: Number(line.laborHours) || 0,
-              laborRateId: line.laborRateId || defaultCatalog?.id || null,
-            },
-            true,
+      ? sortByPanelOrder(
+          initial.lineItems.map((line) =>
+            makeLine(
+              {
+                ...line,
+                uid: line.uid || newLineId(),
+                laborHours: Number(line.laborHours) || 0,
+                laborRateId: line.laborRateId || defaultCatalog?.id || null,
+              },
+              true,
+            ),
           ),
         )
       : [makeLine()];
-    return applyHagelHoursToLines(mapped, hagel, {
-      preparation: Boolean(initial?.applyVehiclePrep),
-      finish: Boolean(initial?.applyVehicleFinish),
-    });
+    return applyHagelHoursToLines(mapped, hagel);
   });
 
   const filteredVehicles = useMemo(
@@ -249,16 +250,53 @@ export function EstimateForm({
     servicePricing,
     dismantlingAmount,
     taxRate: vat,
+    applyVehiclePrep: vehicleExtras.preparation,
+    applyVehicleFinish: vehicleExtras.finish,
+    hagelExpert: hagel,
+    extrasLaborRate: defaultRateAmount(),
   });
 
-  function withHagel(current: Line[], extras = vehicleExtras) {
-    return applyHagelHoursToLines(current, hagel, extras);
+  function withHagel(current: Line[]) {
+    return applyHagelHoursToLines(current, hagel);
   }
 
   function toggleVehicleExtra(key: "preparation" | "finish", on: boolean) {
-    const extras = { ...vehicleExtras, [key]: on };
-    setVehicleExtras(extras);
-    setLines((prev) => withHagel(prev, extras));
+    setVehicleExtras((prev) => ({ ...prev, [key]: on }));
+  }
+
+  async function recalculateAll() {
+    setRecalculating(true);
+    setError(null);
+    try {
+      const [ratesRes, settingsRes] = await Promise.all([fetch("/api/labor-rates"), fetch("/api/settings")]);
+      if (!ratesRes.ok || !settingsRes.ok) {
+        throw new Error("Impossible de charger les barèmes");
+      }
+      const rates = (await ratesRes.json()) as LaborRateOption[];
+      const settings = (await settingsRes.json()) as { hagelExpert?: unknown; defaultLaborRate?: number };
+      const nextHagel = parseHagelExpertConfig(settings.hagelExpert);
+      const catalog = Object.fromEntries(rates.map((rate) => [rate.id, rate]));
+      const fallback = rates.find((rate) => rate.isDefault && rate.active) ?? rates.find((rate) => rate.active);
+      setRateCatalog(rates);
+      setHagelRaw(settings.hagelExpert);
+      setLines((prev) =>
+        applyHagelHoursToLines(
+          prev.map((line) => {
+            const rate = (line.laborRateId && catalog[line.laborRateId]) || fallback;
+            return {
+              ...line,
+              laborRate: rate ? pricedHourly(rate.amount) : line.laborRate,
+              laborRateId: line.laborRateId || fallback?.id || null,
+            };
+          }),
+          nextHagel,
+        ),
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Recalcul impossible");
+    } finally {
+      setRecalculating(false);
+    }
   }
 
   function updateLine(index: number, patch: Partial<Line>) {
@@ -275,25 +313,18 @@ export function EstimateForm({
         "repairMethod",
         "panel",
       ];
-      if (Object.keys(patch).some((key) => hagelFields.includes(key))) return withHagel(next);
-      return next;
+      if (Object.keys(patch).some((key) => hagelFields.includes(key))) {
+        return sortByPanelOrder(withHagel(next));
+      }
+      return patch.panel !== undefined ? sortByPanelOrder(next) : next;
     });
-  }
-
-  function extrasForDraft(draft: PanelLineDraft) {
-    const simulated = [
-      ...lines.filter((line) => line.uid !== draft.uid && line.panel !== draft.panel),
-      { ...makeLine(draft), uid: draft.uid || "draft" },
-    ];
-    return firstPdrLineIndex(simulated) === simulated.length - 1 ? hagelVehicleExtrasWu(hagel, vehicleExtras) : 0;
   }
 
   function openPanel(panel: string) {
     const existing = lines.find((line) => line.panel === panel);
     const draft = existing ?? makeLine({ panel, damageType: "DENT", dentCount: 1, dentSize: 20 });
-    const extras = extrasForDraft(draft);
     setPanelDraft(
-      draft.repairMethod === "PDR" ? { ...draft, laborHours: computeHagelHours(hagel, draft, extras) } : draft,
+      draft.repairMethod === "PDR" ? { ...draft, laborHours: computeHagelHours(hagel, draft, 0) } : draft,
     );
     setEditingPanel(panel);
   }
@@ -314,7 +345,7 @@ export function EstimateForm({
             ? prev.map((line, i) => (i === blank ? { ...created, uid: line.uid } : line))
             : [...prev, created];
       }
-      return withHagel(next);
+      return sortByPanelOrder(withHagel(next));
     });
     setEditingPanel(null);
     setPanelDraft(null);
@@ -390,7 +421,7 @@ export function EstimateForm({
       applyVehiclePrep: Boolean(vehicleExtras.preparation),
       applyVehicleFinish: Boolean(vehicleExtras.finish),
       servicePricing,
-      lineItems: withHagel(lines).map(({ uid: _uid, ...line }, i) => ({
+      lineItems: sortByPanelOrder(withHagel(lines)).map(({ uid: _uid, ...line }, i) => ({
         ...line,
         pricingMode: "HOURLY",
         fixedAmount: 0,
@@ -412,7 +443,7 @@ export function EstimateForm({
     router.refresh();
   }
 
-  const visibleRates = laborRates.filter((r) => r.active || lines.some((l) => l.laborRateId === r.id));
+  const visibleRates = rateCatalog.filter((r) => r.active || lines.some((l) => l.laborRateId === r.id));
   const editingLine = editingPanel ? lines.find((line) => line.panel === editingPanel) : undefined;
 
   return (
@@ -493,36 +524,21 @@ export function EstimateForm({
           return acc;
         }, {})}
         onToggle={openPanel}
-        variant={diagramStyle}
         panelMap={panelMap}
       />
 
       <div className="card overflow-x-auto p-4">
-        <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
-          <div className="space-y-2">
-            <h2 className="font-semibold text-navy">Lignes de dommages</h2>
-            <div className="flex flex-wrap gap-4 text-sm text-navy">
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={Boolean(vehicleExtras.preparation)}
-                  onChange={(e) => toggleVehicleExtra("preparation", e.target.checked)}
-                />
-                Préparation véhicule (+{hagelScaledWu(hagel, hagel.preparationWu)} UT)
-              </label>
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={Boolean(vehicleExtras.finish)}
-                  onChange={(e) => toggleVehicleExtra("finish", e.target.checked)}
-                />
-                Finition véhicule (+{hagelScaledWu(hagel, hagel.finishVehicle)} UT)
-              </label>
-            </div>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <h2 className="font-semibold text-navy">Lignes de dommages</h2>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="ghost" disabled={recalculating} onClick={() => void recalculateAll()}>
+              <RefreshCw size={16} className={recalculating ? "animate-spin" : undefined} />
+              {recalculating ? "Recalcul…" : "Tout recalculer"}
+            </Button>
+            <Button type="button" variant="ghost" onClick={() => setLines((l) => [...l, makeLine()])}>
+              <Plus size={16} /> Ligne
+            </Button>
           </div>
-          <Button type="button" variant="ghost" onClick={() => setLines((l) => [...l, makeLine()])}>
-            <Plus size={16} /> Ligne
-          </Button>
         </div>
         <table className="table line-table min-w-[1180px]">
           <colgroup>
@@ -860,6 +876,22 @@ export function EstimateForm({
                 )}
               </div>
             ))}
+            <label className="flex items-center gap-2 text-sm text-navy">
+              <input
+                type="checkbox"
+                checked={Boolean(vehicleExtras.preparation)}
+                onChange={(e) => toggleVehicleExtra("preparation", e.target.checked)}
+              />
+              Préparation véhicule (+{hagelScaledWu(hagel, hagel.preparationWu)} UT)
+            </label>
+            <label className="flex items-center gap-2 text-sm text-navy">
+              <input
+                type="checkbox"
+                checked={Boolean(vehicleExtras.finish)}
+                onChange={(e) => toggleVehicleExtra("finish", e.target.checked)}
+              />
+              Finition véhicule (+{hagelScaledWu(hagel, hagel.finishVehicle)} UT)
+            </label>
           </div>
           <Field label="Dégarnissage / montage">
             <Input
@@ -929,7 +961,7 @@ export function EstimateForm({
           panels={panels}
           draft={panelDraft}
           hagel={hagel}
-          extrasWu={extrasForDraft(panelDraft)}
+          extrasWu={0}
           onClose={() => {
             setEditingPanel(null);
             setPanelDraft(null);

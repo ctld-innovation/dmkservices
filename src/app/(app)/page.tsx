@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Car, ClipboardList, Plus, Users } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { computeEstimateTotals, sumEstimatesByStatus } from "@/lib/calculations";
+import { computeEstimateTotalsWithSettings, sumEstimatesByStatus } from "@/lib/calculations";
 import { clientLabel, formatCurrency, formatDate, vehicleLabel } from "@/lib/utils";
 import { ESTIMATE_STATUSES, STATUS_COLORS, labelOf } from "@/lib/constants";
 import { getSession, canWrite } from "@/lib/auth";
@@ -12,7 +12,7 @@ import { WriteOnly } from "@/components/Actions";
 export default async function DashboardPage() {
   const session = await getSession();
   const writable = session ? canWrite(session.role) : false;
-  const [clients, allEstimates, recent, counts] = await Promise.all([
+  const [clients, allEstimates, recent, counts, settings] = await Promise.all([
     prisma.client.groupBy({ by: ["type"], _count: { _all: true } }),
     prisma.estimate.findMany({
       select: {
@@ -22,6 +22,8 @@ export default async function DashboardPage() {
         taxRate: true,
         servicePricing: true,
         dismantlingAmount: true,
+        applyVehiclePrep: true,
+        applyVehicleFinish: true,
         lineItems: {
           select: {
             laborHours: true,
@@ -46,13 +48,23 @@ export default async function DashboardPage() {
       vehicles: prisma.vehicle.count(),
       estimates: prisma.estimate.count(),
     },
+    prisma.companySettings.findUnique({
+      where: { id: "default" },
+      select: { hagelExpert: true, defaultLaborRate: true },
+    }),
   ]);
   const [clientCount, vehicleCount, estimateCount] = await Promise.all([
     counts.clients,
     counts.vehicles,
     counts.estimates,
   ]);
-  const byStatus = sumEstimatesByStatus(allEstimates);
+  const byStatus = sumEstimatesByStatus(
+    allEstimates.map((est) => ({
+      ...est,
+      hagelExpert: settings?.hagelExpert,
+      extrasLaborRate: settings?.defaultLaborRate,
+    })),
+  );
   const statusTotals = ESTIMATE_STATUSES.map((s) => ({
     status: s.value,
     label: s.label,
@@ -139,7 +151,7 @@ export default async function DashboardPage() {
             </thead>
             <tbody>
               {recent.map((est) => {
-                const totals = computeEstimateTotals(est);
+                const totals = computeEstimateTotalsWithSettings(est, settings);
                 return (
                   <tr key={est.id}>
                     <td>

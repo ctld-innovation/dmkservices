@@ -6,11 +6,13 @@ import { EstimateForm } from "@/components/EstimateForm";
 import { resolveDiagramPanelMap } from "@/lib/diagram";
 import { resolveCarDiagram } from "@/lib/constants";
 import { ensureLaborRates } from "@/lib/laborRates";
+import { syncPanelLookups } from "@/lib/panelLookups";
 
 export default async function EditEstimatePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const session = await requireWriter();
   await ensureLaborRates();
+  await syncPanelLookups();
   const [estimate, clients, vehicles, panels, settings, laborRates] = await Promise.all([
     prisma.estimate.findUnique({
       where: { id },

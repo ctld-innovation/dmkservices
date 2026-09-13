@@ -2,17 +2,15 @@
 
 import { FormEvent, useState } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
 import { BrandLogo } from "@/components/AppShell";
 import { Button, ErrorText, Input, Field } from "@/components/ui";
 import { LocaleSwitcher } from "@/components/LocaleSwitcher";
 import { getMessages, type Locale } from "@/lib/i18n";
 
-export default function LoginForm({ locale }: { locale: Locale }) {
+export default function ForgotForm({ locale }: { locale: Locale }) {
   const t = getMessages(locale);
-  const router = useRouter();
-  const params = useSearchParams();
   const [error, setError] = useState<string | null>(null);
+  const [sent, setSent] = useState(false);
   const [loading, setLoading] = useState(false);
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
@@ -20,22 +18,18 @@ export default function LoginForm({ locale }: { locale: Locale }) {
     setLoading(true);
     setError(null);
     const form = new FormData(e.currentTarget);
-    const res = await fetch("/api/auth/login", {
+    const res = await fetch("/api/auth/forgot-password", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        email: form.get("email"),
-        password: form.get("password"),
-      }),
+      body: JSON.stringify({ email: form.get("email") }),
     });
-    const data = await res.json().catch(() => ({}));
     setLoading(false);
     if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
       setError(data.error || t.login.error);
       return;
     }
-    router.push(params.get("from") || "/");
-    router.refresh();
+    setSent(true);
   }
 
   return (
@@ -51,23 +45,27 @@ export default function LoginForm({ locale }: { locale: Locale }) {
         <div className="flex items-center justify-between gap-3 border-b border-line px-6 py-5">
           <div>
             <BrandLogo className="h-16 w-auto max-w-[210px]" />
-            <p className="mt-1 text-xs text-navy/50">{t.tagline}</p>
+            <p className="mt-1 text-xs text-navy/50">{t.login.forgotTitle}</p>
           </div>
           <LocaleSwitcher locale={locale} />
         </div>
         <div className="space-y-4 p-8">
-          <Field label={t.login.email}>
-            <Input name="email" type="email" required autoComplete="username" />
-          </Field>
-          <Field label={t.login.password}>
-            <Input name="password" type="password" required autoComplete="current-password" />
-          </Field>
-          <ErrorText message={error} />
-          <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? t.login.loading : t.login.submit}
-          </Button>
-          <Link href="/login/forgot" className="block text-center text-sm text-amber-700 hover:underline">
-            {t.login.forgot}
+          {sent ? (
+            <p className="text-sm text-navy/80">{t.login.forgotSent}</p>
+          ) : (
+            <>
+              <p className="text-sm text-navy/70">{t.login.forgotHelp}</p>
+              <Field label={t.login.email}>
+                <Input name="email" type="email" required autoComplete="username" />
+              </Field>
+              <ErrorText message={error} />
+              <Button type="submit" className="w-full" disabled={loading}>
+                {loading ? t.login.forgotSending : t.login.forgotSubmit}
+              </Button>
+            </>
+          )}
+          <Link href="/login" className="block text-center text-sm text-amber-700 hover:underline">
+            {t.login.backToLogin}
           </Link>
         </div>
       </form>

@@ -2,40 +2,40 @@
 
 import { FormEvent, useState } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
 import { BrandLogo } from "@/components/AppShell";
 import { Button, ErrorText, Input, Field } from "@/components/ui";
 import { LocaleSwitcher } from "@/components/LocaleSwitcher";
 import { getMessages, type Locale } from "@/lib/i18n";
 
-export default function LoginForm({ locale }: { locale: Locale }) {
+export default function ResetForm({ locale, token }: { locale: Locale; token: string }) {
   const t = getMessages(locale);
-  const router = useRouter();
-  const params = useSearchParams();
   const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
   const [loading, setLoading] = useState(false);
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    setLoading(true);
     setError(null);
     const form = new FormData(e.currentTarget);
-    const res = await fetch("/api/auth/login", {
+    const password = String(form.get("password") || "");
+    const confirm = String(form.get("confirm") || "");
+    if (password !== confirm) {
+      setError(t.login.passwordMismatch);
+      return;
+    }
+    setLoading(true);
+    const res = await fetch("/api/auth/reset-password", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        email: form.get("email"),
-        password: form.get("password"),
-      }),
+      body: JSON.stringify({ token, password }),
     });
     const data = await res.json().catch(() => ({}));
     setLoading(false);
     if (!res.ok) {
-      setError(data.error || t.login.error);
+      setError(data.error || t.login.resetInvalid);
       return;
     }
-    router.push(params.get("from") || "/");
-    router.refresh();
+    setDone(true);
   }
 
   return (
@@ -51,23 +51,31 @@ export default function LoginForm({ locale }: { locale: Locale }) {
         <div className="flex items-center justify-between gap-3 border-b border-line px-6 py-5">
           <div>
             <BrandLogo className="h-16 w-auto max-w-[210px]" />
-            <p className="mt-1 text-xs text-navy/50">{t.tagline}</p>
+            <p className="mt-1 text-xs text-navy/50">{t.login.resetTitle}</p>
           </div>
           <LocaleSwitcher locale={locale} />
         </div>
         <div className="space-y-4 p-8">
-          <Field label={t.login.email}>
-            <Input name="email" type="email" required autoComplete="username" />
-          </Field>
-          <Field label={t.login.password}>
-            <Input name="password" type="password" required autoComplete="current-password" />
-          </Field>
-          <ErrorText message={error} />
-          <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? t.login.loading : t.login.submit}
-          </Button>
-          <Link href="/login/forgot" className="block text-center text-sm text-amber-700 hover:underline">
-            {t.login.forgot}
+          {!token ? (
+            <p className="text-sm text-navy/80">{t.login.resetInvalid}</p>
+          ) : done ? (
+            <p className="text-sm text-navy/80">{t.login.resetSuccess}</p>
+          ) : (
+            <>
+              <Field label={t.login.password}>
+                <Input name="password" type="password" required minLength={8} autoComplete="new-password" />
+              </Field>
+              <Field label={t.login.confirmPassword}>
+                <Input name="confirm" type="password" required minLength={8} autoComplete="new-password" />
+              </Field>
+              <ErrorText message={error} />
+              <Button type="submit" className="w-full" disabled={loading}>
+                {loading ? t.login.resetSaving : t.login.resetSubmit}
+              </Button>
+            </>
+          )}
+          <Link href="/login" className="block text-center text-sm text-amber-700 hover:underline">
+            {t.login.backToLogin}
           </Link>
         </div>
       </form>

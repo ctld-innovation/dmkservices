@@ -1,7 +1,8 @@
 import type { CompanySettings, Estimate, EstimateLineItem, Client, Vehicle, User, VehiclePhoto } from "@prisma/client";
-import { computeEstimateTotals, isMethodFixed, estimateLineMethodFlags, METHOD_FLAG_COLUMNS, methodFlagMark } from "@/lib/calculations";
+import { computeEstimateTotalsWithSettings, isMethodFixed, estimateLineMethodFlags, METHOD_FLAG_COLUMNS, methodFlagMark, formatMethodLegend } from "@/lib/calculations";
 import { EstimateTotalsPanels } from "@/components/EstimateTotalsPanels";
 import { clientLabel, formatCurrency, formatDate, fullName } from "@/lib/utils";
+import { sortByPanelOrder } from "@/lib/constants";
 import { CarDiagramSvg } from "@/components/CarPanelPicker";
 import { resolveDiagramPanelMap } from "@/lib/diagram";
 
@@ -23,7 +24,7 @@ export function EstimateDocument({
   photos?: VehiclePhoto[];
   lookups?: Array<{ id: string; label: string }>;
 }) {
-  const totals = computeEstimateTotals(estimate);
+  const totals = computeEstimateTotalsWithSettings(estimate, settings);
   const dentCounts: Record<string, number> = {};
   for (const line of estimate.lineItems) {
     if (!line.panel) continue;
@@ -60,7 +61,10 @@ export function EstimateDocument({
         </div>
         <div className="shrink-0 text-right">
           <div className="text-2xl font-bold leading-none">DEVIS</div>
-          <div className="mt-1 font-semibold text-amber-600">{estimate.number}</div>
+          <div className="mt-2 inline-block rounded-md border border-navy bg-amber px-3 py-1 text-base font-bold tracking-[0.12em] text-navy">
+            {estimate.vehicle.licensePlate}
+          </div>
+          <div className="mt-1 text-sm font-semibold text-amber-600">{estimate.number}</div>
           <div className="text-[11px] text-slate-500">Date : {formatDate(estimate.date)}</div>
           {estimate.damageDate ? (
             <div className="text-[11px] text-slate-500">Sinistre : {formatDate(estimate.damageDate)}</div>
@@ -104,52 +108,49 @@ export function EstimateDocument({
       <table className="w-full border-collapse text-[10px]">
         <thead>
           <tr className="bg-amber text-navy">
-            <th rowSpan={2} className="px-1.5 py-1.5 text-left font-bold">
+            <th rowSpan={2} className="border border-navy/40 px-1.5 py-1.5 text-left font-bold">
               Pièce
             </th>
-            <th colSpan={5} className="px-1.5 py-1.5 text-center font-bold">
+            <th colSpan={5} className="border border-navy/40 px-1.5 py-1.5 text-center font-bold">
               Méthode
             </th>
-            <th rowSpan={2} className="px-1.5 py-1.5 text-left font-bold">
+            <th rowSpan={2} className="border border-navy/40 px-1.5 py-1.5 text-left font-bold">
               Taille
             </th>
-            <th rowSpan={2} className="px-1.5 py-1.5 text-left font-bold">
+            <th rowSpan={2} className="border border-navy/40 px-1.5 py-1.5 text-left font-bold">
               Bosses
             </th>
-            <th rowSpan={2} className="px-1.5 py-1.5 text-left font-bold">
+            <th rowSpan={2} className="border border-navy/40 px-1.5 py-1.5 text-left font-bold">
               Heures
             </th>
-            <th rowSpan={2} className="px-1.5 py-1.5 text-left font-bold">
+            <th rowSpan={2} className="border border-navy/40 px-1.5 py-1.5 text-left font-bold">
               Total
             </th>
           </tr>
           <tr className="bg-amber text-navy">
             {METHOD_FLAG_COLUMNS.map((col) => (
-              <th key={col} className="px-1 py-1 text-center font-bold">
+              <th key={col} className="border border-navy/40 px-1 py-1 text-center font-bold">
                 {col}
               </th>
             ))}
           </tr>
         </thead>
         <tbody>
-          {estimate.lineItems
-            .slice()
-            .sort((a, b) => a.sortOrder - b.sortOrder)
-            .map((line, i) => {
+          {sortByPanelOrder(estimate.lineItems).map((line, i) => {
               const flags = estimateLineMethodFlags(line);
               const replacement = line.repairMethod === "PANEL_REPLACEMENT";
               return (
                 <tr key={line.id} className={i % 2 ? "bg-mist" : "bg-white"}>
-                  <td className="px-1.5 py-1">{line.panel}</td>
+                  <td className="border border-navy/25 px-1.5 py-1">{line.panel}</td>
                   {METHOD_FLAG_COLUMNS.map((col) => (
-                    <td key={col} className="px-1 py-1 text-center">
+                    <td key={col} className="border border-navy/25 px-1 py-1 text-center">
                       {methodFlagMark(flags[col])}
                     </td>
                   ))}
-                  <td className="px-1.5 py-1">{replacement ? "—" : line.dentSize ? `${line.dentSize} mm` : "—"}</td>
-                  <td className="px-1.5 py-1 text-right">{replacement ? "—" : line.dentCount || ""}</td>
-                  <td className="px-1.5 py-1 text-right">{replacement ? "—" : Number(line.laborHours).toFixed(1)}</td>
-                  <td className="px-1.5 py-1 text-right font-semibold">
+                  <td className="border border-navy/25 px-1.5 py-1">{replacement ? "—" : line.dentSize ? `${line.dentSize} mm` : "—"}</td>
+                  <td className="border border-navy/25 px-1.5 py-1 text-right">{replacement ? "—" : line.dentCount || ""}</td>
+                  <td className="border border-navy/25 px-1.5 py-1 text-right">{replacement ? "—" : Number(line.laborHours).toFixed(1)}</td>
+                  <td className="border border-navy/25 px-1.5 py-1 text-right font-semibold">
                     {isMethodFixed(estimate.servicePricing, line.repairMethod)
                       ? "—"
                       : formatCurrency(line.lineTotal)}
@@ -159,6 +160,7 @@ export function EstimateDocument({
             })}
         </tbody>
       </table>
+      <p className="mt-1 text-[9px] leading-snug text-slate-500">{formatMethodLegend()}</p>
 
       <div className="mt-3">
         <EstimateTotalsPanels totals={totals} taxRate={Number(estimate.taxRate) || 0} compact />
@@ -168,7 +170,6 @@ export function EstimateDocument({
         <h2 className="mb-1 text-center text-sm font-semibold">Éclaté des dommages</h2>
         <div className="mx-auto w-[70%]">
           <CarDiagramSvg
-            variant="exploded"
             selected={selectedPanels}
             dentCounts={dentCounts}
             panelMap={panelMap}

@@ -55,6 +55,11 @@ export function vehicleLabel(v: { brand: string; model: string; licensePlate: st
   return `${v.brand} ${v.model} (${v.licensePlate})`;
 }
 
+export function estimatePdfFilename(licensePlate: string) {
+  const plate = (licensePlate || "vehicule").trim().replace(/[\\/:*?"<>|\s]+/g, "-") || "vehicule";
+  return `Devis-${plate}.pdf`;
+}
+
 export function isValidVin(vin: string) {
   return /^[A-HJ-NPR-Z0-9]{17}$/i.test(vin.trim());
 }

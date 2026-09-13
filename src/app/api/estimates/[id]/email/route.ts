@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
-import nodemailer from "nodemailer";
 import { prisma } from "@/lib/prisma";
 import { canWrite, getSession, unauthorized, forbidden, jsonError } from "@/lib/auth";
 import { buildEstimatePdf } from "@/lib/pdf";
 import { writeAudit } from "@/lib/audit";
+import { loadCompanySettings, sendCompanyMail, smtpConfigured } from "@/lib/mail";
+import { estimateMailMessage, estimateMailSubject } from "@/lib/estimateMail";
+import { estimatePdfFilename } from "@/lib/utils";
 
 export async function POST(
   req: Request,
@@ -33,43 +35,31 @@ export async function POST(
     .join(", ");
 
   const [settings, photos, lookups] = await Promise.all([
-    prisma.companySettings.upsert({
-      where: { id: "default" },
-      update: {},
-      create: { id: "default", name: "DMK Services" },
-    }),
+    loadCompanySettings(),
     estimate.includePhotos
       ? prisma.vehiclePhoto.findMany({ where: { vehicleId: estimate.vehicleId } })
       : Promise.resolve([]),
     prisma.lookupValue.findMany({ where: { category: "PANEL", active: true } }),
   ]);
-  if (!settings.smtpHost || !settings.smtpUser) {
+  if (!smtpConfigured(settings)) {
     return jsonError(
       "SMTP non configuré. Renseignez l'hôte et l'utilisateur dans Paramètres.",
     );
   }
 
   const subject =
-    String(body.subject || "").trim() || `Devis ${estimate.number} — ${settings.name}`;
+    String(body.subject || "").trim() || estimateMailSubject(estimate.vehicle);
   const text =
     String(body.message || "").trim() ||
-    `Bonjour,\n\nVeuillez trouver ci-joint le devis ${estimate.number}.\n\nCordialement,\n${settings.name}`;
+    estimateMailMessage(estimate.number, estimate.vehicle, settings.name);
 
   const pdf = await buildEstimatePdf(estimate, settings, photos, lookups);
-  const transporter = nodemailer.createTransport({
-    host: settings.smtpHost,
-    port: settings.smtpPort || 587,
-    secure: (settings.smtpPort || 587) === 465,
-    auth: { user: settings.smtpUser, pass: settings.smtpPass || "" },
-  });
-
-  await transporter.sendMail({
-    from: settings.smtpFrom || settings.smtpUser,
+  await sendCompanyMail(settings, {
     to,
     cc: cc || undefined,
     subject,
     text,
-    attachments: [{ filename: `${estimate.number}.pdf`, content: pdf }],
+    attachments: [{ filename: estimatePdfFilename(estimate.vehicle.licensePlate), content: pdf }],
   });
 
   if (estimate.status === "DRAFT") {

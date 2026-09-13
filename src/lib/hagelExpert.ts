@@ -166,6 +166,14 @@ export function hagelScaledWu(config: HagelExpertConfig, rawWu: number) {
   return Math.round(Math.max(0, rawWu) * (config.wuPerHour / 10));
 }
 
+export function hagelHoursFromRawWu(config: HagelExpertConfig, rawWu: number) {
+  return round2(hagelScaledWu(config, rawWu) / config.wuPerHour);
+}
+
+export function hagelAmountFromRawWu(config: HagelExpertConfig, rawWu: number, laborRate: number) {
+  return round2(hagelHoursFromRawWu(config, rawWu) * (Number(laborRate) || 0));
+}
+
 export type HagelVehicleExtras = {
   preparation?: boolean;
   finish?: boolean;
@@ -178,25 +186,15 @@ export function hagelVehicleExtrasWu(config: HagelExpertConfig, extras: HagelVeh
   return hagelScaledWu(config, raw);
 }
 
-export function firstPdrLineIndex<T extends { repairMethod?: string; panel?: string; dentCount?: number }>(
-  lines: T[],
-) {
-  return lines.findIndex(
-    (line) => line.repairMethod === "PDR" && line.panel && (Number(line.dentCount) || 0) > 0,
-  );
-}
-
 export function applyHagelHoursToLines<T extends HagelLineInput & { repairMethod?: string; panel?: string; laborHours: number }>(
   lines: T[],
   config: HagelExpertConfig,
-  extras: HagelVehicleExtras = {},
+  _extras: HagelVehicleExtras = {},
 ) {
-  const firstPdr = firstPdrLineIndex(lines);
-  const vehicleExtras = hagelVehicleExtrasWu(config, extras);
-  return lines.map((line, index) => {
+  void _extras;
+  return lines.map((line) => {
     if (line.repairMethod === "PANEL_REPLACEMENT") return { ...line, laborHours: 0 };
     if (line.repairMethod !== "PDR") return line;
-    const extra = index === firstPdr ? vehicleExtras : 0;
-    return { ...line, laborHours: computeHagelHours(config, line, extra) };
+    return { ...line, laborHours: computeHagelHours(config, line, 0) };
   });
 }

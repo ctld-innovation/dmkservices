@@ -45,6 +45,9 @@ npm install
 echo "==> prisma generate"
 npx prisma generate
 
+echo "==> prisma db push"
+npx prisma db push
+
 echo "==> build"
 rm -rf .next public/media-next
 npm run build

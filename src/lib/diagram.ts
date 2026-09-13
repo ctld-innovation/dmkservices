@@ -154,8 +154,9 @@ export function panelZoneId(label: string) {
     .replace(/^-+|-+$/g, "");
 }
 
-export function diagramZones(_variant?: CarDiagram): DiagramZone[] {
-  return EXPLODED_ZONE_LABELS.map((label) => ({ id: panelZoneId(label), label }));
+export function diagramZones(variant: CarDiagram = "exploded"): DiagramZone[] {
+  const labels = variant === "assembled" ? ASSEMBLED_ZONE_LABELS : EXPLODED_ZONE_LABELS;
+  return labels.map((label) => ({ id: panelZoneId(label), label }));
 }
 
 export function emptyDiagramMaps(): DiagramMaps {
@@ -182,15 +183,61 @@ export function parseDiagramMaps(value: unknown): DiagramMaps {
 export function resolveDiagramPanelMap(
   maps: unknown,
   variant: CarDiagram,
-  lookups: Array<{ id: string; label: string }>,
+  lookups: Array<{ id: string; label: string; value?: string }>,
 ): Record<string, string> {
   const stored = parseDiagramMaps(maps)[variant];
   const byId = Object.fromEntries(lookups.map((item) => [item.id, item.label]));
   const byLabel = Object.fromEntries(lookups.map((item) => [item.label, item.label]));
+  const byValue = Object.fromEntries(
+    lookups
+      .filter((item) => item.value)
+      .map((item) => [item.value as string, item.label]),
+  );
   const result: Record<string, string> = {};
   for (const zone of diagramZones(variant)) {
     const lookupId = stored[zone.id];
-    result[zone.id] = (lookupId && byId[lookupId]) || byLabel[zone.label] || zone.label;
+    result[zone.id] =
+      (lookupId && byId[lookupId]) || byLabel[zone.label] || byValue[zone.label] || zone.label;
   }
   return result;
+}
+
+export function remapDiagramMapsForRenamedPanel(
+  maps: unknown,
+  lookup: { id: string; label: string; value: string },
+  previousLabel: string,
+): DiagramMaps {
+  const next = parseDiagramMaps(maps);
+  const aliases = new Set([previousLabel, lookup.label, lookup.value].filter(Boolean));
+  for (const variant of ["assembled", "exploded"] as const) {
+    for (const zone of diagramZones(variant)) {
+      const assigned = next[variant][zone.id];
+      if (assigned && assigned !== lookup.id) continue;
+      if (assigned === lookup.id || aliases.has(zone.label)) {
+        next[variant][zone.id] = lookup.id;
+      }
+    }
+  }
+  return next;
+}
+
+export function unmapDiagramMapsForPanel(maps: unknown, lookupId: string): DiagramMaps {
+  const next = parseDiagramMaps(maps);
+  for (const variant of ["assembled", "exploded"] as const) {
+    for (const [zoneId, id] of Object.entries(next[variant])) {
+      if (id === lookupId) delete next[variant][zoneId];
+    }
+  }
+  return next;
+}
+
+export function pieceLabelForZone(
+  zone: DiagramZone,
+  storedId: string | undefined,
+  pieces: Array<{ id: string; label: string; value?: string }>,
+) {
+  const mapped = storedId ? pieces.find((piece) => piece.id === storedId) : undefined;
+  if (mapped) return mapped.label;
+  const fallback = pieces.find((piece) => piece.label === zone.label || piece.value === zone.label);
+  return fallback?.label ?? zone.label;
 }

@@ -16,6 +16,7 @@ export function estimateMailMessage(
   estimateNumber: string,
   vehicle: VehicleMailInfo,
   companyName: string,
+  replyTo?: string | null,
 ) {
   const lines = [
     "Bonjour,",
@@ -34,5 +35,7 @@ export function estimateMailMessage(
     lines.push(`Kilométrage : ${vehicle.mileage.toLocaleString("fr-FR")} km`);
   }
   lines.push("", "Cordialement,", companyName);
+  const signatureEmail = replyTo?.trim();
+  if (signatureEmail) lines.push(signatureEmail);
   return lines.join("\n");
 }

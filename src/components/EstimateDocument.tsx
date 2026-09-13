@@ -1,5 +1,5 @@
 import type { CompanySettings, Estimate, EstimateLineItem, Client, Vehicle, User, VehiclePhoto } from "@prisma/client";
-import { computeEstimateTotalsWithSettings, isMethodFixed, estimateLineMethodFlags, METHOD_FLAG_COLUMNS, methodFlagMark, formatMethodLegend } from "@/lib/calculations";
+import { computeEstimateTotalsWithSettings, isMethodFixed, estimateLineMethodFlags, METHOD_FLAG_COLUMNS, methodFlagMark, formatMethodLegend, formatLineExtraWu } from "@/lib/calculations";
 import { EstimateTotalsPanels } from "@/components/EstimateTotalsPanels";
 import { clientLabel, formatCurrency, formatDate, fullName } from "@/lib/utils";
 import { sortByPanelOrder } from "@/lib/constants";
@@ -124,6 +124,9 @@ export function EstimateDocument({
               Heures
             </th>
             <th rowSpan={2} className="border border-navy/40 px-1.5 py-1.5 text-left font-bold">
+              Ex UT
+            </th>
+            <th rowSpan={2} className="border border-navy/40 px-1.5 py-1.5 text-left font-bold">
               Total
             </th>
           </tr>
@@ -150,6 +153,7 @@ export function EstimateDocument({
                   <td className="border border-navy/25 px-1.5 py-1">{replacement ? "—" : line.dentSize ? `${line.dentSize} mm` : "—"}</td>
                   <td className="border border-navy/25 px-1.5 py-1 text-right">{replacement ? "—" : line.dentCount || ""}</td>
                   <td className="border border-navy/25 px-1.5 py-1 text-right">{replacement ? "—" : Number(line.laborHours).toFixed(1)}</td>
+                  <td className="border border-navy/25 px-1.5 py-1 text-right">{formatLineExtraWu(line)}</td>
                   <td className="border border-navy/25 px-1.5 py-1 text-right font-semibold">
                     {isMethodFixed(estimate.servicePricing, line.repairMethod)
                       ? "—"

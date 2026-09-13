@@ -2,22 +2,17 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { CompanySettings, LookupValue, Role } from "@prisma/client";
-import { ROLES, resolveCarDiagram, type CarDiagram } from "@/lib/constants";
-import { Button, ErrorText, Field, Input, Select, Textarea } from "@/components/ui";
+import type { CompanySettings, LookupValue } from "@prisma/client";
+import { resolveCarDiagram, panelSortIndex, type CarDiagram } from "@/lib/constants";
+import { Button, ErrorText, Field, Input, Textarea } from "@/components/ui";
 import { DiagramMappingEditor } from "@/components/DiagramMappingEditor";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { UsersSettings, type UserRow } from "@/components/UsersSettings";
 import type { DiagramMaps } from "@/lib/diagram";
+import type { SessionUser } from "@/lib/auth";
 import Link from "next/link";
 
-type UserRow = {
-  id: string;
-  email: string;
-  firstName: string;
-  lastName: string;
-  role: Role;
-  active: boolean;
-};
+type TabId = "company" | "lookups" | "users" | "backup" | "audit";
 
 type AuditRow = {
   id: string;
@@ -35,15 +30,19 @@ export function SettingsForm({
   users,
   audits,
   isAdmin,
+  currentUser,
+  defaultTab = "company",
 }: {
   settings: CompanySettings;
   lookups: LookupValue[];
   users: UserRow[];
   audits: AuditRow[];
   isAdmin: boolean;
+  currentUser: SessionUser;
+  defaultTab?: TabId;
 }) {
   const router = useRouter();
-  const [tab, setTab] = useState<"company" | "lookups" | "users" | "backup" | "audit">("company");
+  const [tab, setTab] = useState<TabId>(defaultTab);
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
   const [panelLabel, setPanelLabel] = useState("");
@@ -73,6 +72,7 @@ export function SettingsForm({
       smtpUser: form.get("smtpUser"),
       smtpPass: form.get("smtpPass"),
       smtpFrom: form.get("smtpFrom"),
+      smtpReplyTo: String(form.get("smtpReplyTo") || "").trim() || null,
     };
     const res = await fetch("/api/settings", {
       method: "PATCH",
@@ -116,6 +116,7 @@ export function SettingsForm({
       smtpUser: settings.smtpUser,
       smtpPass: settings.smtpPass ? "********" : "",
       smtpFrom: settings.smtpFrom,
+      smtpReplyTo: settings.smtpReplyTo,
     };
     const res = await fetch("/api/settings", {
       method: "PATCH",
@@ -138,28 +139,6 @@ export function SettingsForm({
     router.refresh();
   }
 
-  async function createUser(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const form = new FormData(e.currentTarget);
-    const res = await fetch("/api/users", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        email: form.get("email"),
-        firstName: form.get("firstName"),
-        lastName: form.get("lastName"),
-        role: form.get("role"),
-        password: form.get("password"),
-      }),
-    });
-    const data = await res.json();
-    if (!res.ok) setError(data.error);
-    else {
-      (e.target as HTMLFormElement).reset();
-      router.refresh();
-    }
-  }
-
   async function removeLookup() {
     if (!pendingLookupId) return;
     setDeletingLookup(true);
@@ -173,19 +152,10 @@ export function SettingsForm({
     router.refresh();
   }
 
-  async function toggleUser(id: string, active: boolean) {
-    await fetch(`/api/users/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ active: !active }),
-    });
-    router.refresh();
-  }
-
   const tabs = [
     { id: "company" as const, label: "Entreprise" },
     { id: "lookups" as const, label: "Listes" },
-    { id: "users" as const, label: "Utilisateurs" },
+    { id: "users" as const, label: isAdmin ? "Utilisateurs" : "Mon profil" },
     { id: "audit" as const, label: "Journal" },
     { id: "backup" as const, label: "Sauvegarde" },
   ];
@@ -298,6 +268,9 @@ export function SettingsForm({
             <Field label="Expéditeur">
               <Input name="smtpFrom" defaultValue={settings.smtpFrom ?? ""} />
             </Field>
+            <Field label="Répondre à" hint="Adresse de réponse vue par le destinataire">
+              <Input name="smtpReplyTo" type="email" defaultValue={settings.smtpReplyTo ?? ""} />
+            </Field>
           </div>
           <ErrorText message={error} />
           {ok ? <p className="text-sm text-green-700">{ok}</p> : null}
@@ -319,6 +292,8 @@ export function SettingsForm({
           <ul className="columns-2 gap-4 text-sm sm:columns-3">
             {lookups
               .filter((l) => l.category === "PANEL")
+              .slice()
+              .sort((a, b) => panelSortIndex(a.label) - panelSortIndex(b.label) || a.label.localeCompare(b.label, "fr"))
               .map((l) => (
                 <li key={l.id} className="mb-1 flex items-center justify-between gap-2 break-inside-avoid">
                   <span>{l.label}</span>
@@ -338,7 +313,10 @@ export function SettingsForm({
           <DiagramMappingEditor
             initialDiagram={resolveCarDiagram(settings.carDiagram)}
             initialMaps={settings.carDiagramMaps}
-            pieces={lookups.filter((l) => l.category === "PANEL" && l.active)}
+            pieces={lookups
+              .filter((l) => l.category === "PANEL" && l.active)
+              .slice()
+              .sort((a, b) => panelSortIndex(a.label) - panelSortIndex(b.label) || a.label.localeCompare(b.label, "fr"))}
             isAdmin={isAdmin}
             onSave={saveDiagram}
           />
@@ -346,74 +324,7 @@ export function SettingsForm({
       ) : null}
 
       {tab === "users" ? (
-        <div className="space-y-4">
-          {!isAdmin ? (
-            <p className="text-sm text-slate-500">La gestion des utilisateurs est réservée aux administrateurs.</p>
-          ) : (
-            <>
-              <form onSubmit={createUser} className="card grid gap-3 p-6 sm:grid-cols-2">
-                <Field label="Prénom">
-                  <Input name="firstName" required />
-                </Field>
-                <Field label="Nom">
-                  <Input name="lastName" required />
-                </Field>
-                <Field label="Email">
-                  <Input name="email" type="email" required />
-                </Field>
-                <Field label="Mot de passe">
-                  <Input name="password" type="password" required minLength={8} />
-                </Field>
-                <Field label="Rôle">
-                  <Select name="role" defaultValue="ESTIMATOR">
-                    {ROLES.map((r) => (
-                      <option key={r.value} value={r.value}>
-                        {r.label}
-                      </option>
-                    ))}
-                  </Select>
-                </Field>
-                <div className="flex items-end">
-                  <Button type="submit">Créer l&apos;utilisateur</Button>
-                </div>
-              </form>
-              <div className="card overflow-x-auto">
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th>Nom</th>
-                      <th>Email</th>
-                      <th>Rôle</th>
-                      <th>Actif</th>
-                      <th />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {users.map((u) => (
-                      <tr key={u.id}>
-                        <td>
-                          {u.firstName} {u.lastName}
-                        </td>
-                        <td>{u.email}</td>
-                        <td>{ROLES.find((r) => r.value === u.role)?.label}</td>
-                        <td>{u.active ? "Oui" : "Non"}</td>
-                        <td>
-                          <button
-                            type="button"
-                            className="btn btn-ghost"
-                            onClick={() => toggleUser(u.id, u.active)}
-                          >
-                            {u.active ? "Désactiver" : "Activer"}
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </>
-          )}
-        </div>
+        <UsersSettings users={users} isAdmin={isAdmin} currentUser={currentUser} />
       ) : null}
 
       {tab === "audit" ? (

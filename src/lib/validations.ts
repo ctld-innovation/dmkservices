@@ -113,6 +113,22 @@ export const userSchema = z.object({
   active: z.boolean().optional(),
 });
 
+export const profileSchema = z.object({
+  email: z.string().email(),
+  firstName: z.string().min(1),
+  lastName: z.string().min(1),
+  password: z.string().min(8).optional(),
+});
+
+export const forgotPasswordSchema = z.object({
+  email: z.string().email(),
+});
+
+export const resetPasswordSchema = z.object({
+  token: z.string().min(10),
+  password: z.string().min(8, "Mot de passe : 8 caractères min."),
+});
+
 export const settingsSchema = z.object({
   name: z.string().min(1),
   street: z.string().optional().nullable(),
@@ -135,4 +151,9 @@ export const settingsSchema = z.object({
   smtpUser: z.string().optional().nullable(),
   smtpPass: z.string().optional().nullable(),
   smtpFrom: z.string().optional().nullable(),
+  smtpReplyTo: z
+    .string()
+    .optional()
+    .nullable()
+    .refine((v) => !v || isValidEmail(v), "Adresse de réponse invalide"),
 });

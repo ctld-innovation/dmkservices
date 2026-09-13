@@ -2,44 +2,41 @@
 
 import { useMemo, useState } from "react";
 import type { CarDiagram } from "@/lib/constants";
-import { CAR_DIAGRAMS } from "@/lib/constants";
 import { diagramZones, parseDiagramMaps, type DiagramMaps } from "@/lib/diagram";
 import { Button, Field, Select } from "@/components/ui";
-import { CarDiagramPreview, CarDiagramSvg } from "@/components/CarPanelPicker";
+import { CarDiagramSvg } from "@/components/CarPanelPicker";
 
 type Piece = { id: string; label: string };
 
 export function DiagramMappingEditor({
-  initialDiagram,
   initialMaps,
   pieces,
   isAdmin,
   onSave,
 }: {
-  initialDiagram: CarDiagram;
+  initialDiagram?: CarDiagram;
   initialMaps: unknown;
   pieces: Piece[];
   isAdmin: boolean;
   onSave: (carDiagram: CarDiagram, maps: DiagramMaps) => Promise<void>;
 }) {
-  const [diagram, setDiagram] = useState<CarDiagram>(initialDiagram);
   const [maps, setMaps] = useState<DiagramMaps>(() => parseDiagramMaps(initialMaps));
   const [activeZoneId, setActiveZoneId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [ok, setOk] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const zones = useMemo(() => diagramZones(diagram), [diagram]);
+  const zones = useMemo(() => diagramZones("exploded"), []);
   const activeZone = zones.find((zone) => zone.id === activeZoneId) ?? null;
-  const assignedId = activeZone ? maps[diagram][activeZone.id] ?? "" : "";
+  const assignedId = activeZone ? maps.exploded[activeZone.id] ?? "" : "";
 
   function assignPiece(lookupId: string) {
     if (!activeZone) return;
     setMaps((prev) => {
-      const next = { ...prev[diagram] };
+      const next = { ...prev.exploded };
       if (!lookupId) delete next[activeZone.id];
       else next[activeZone.id] = lookupId;
-      return { ...prev, [diagram]: next };
+      return { ...prev, exploded: next };
     });
     setOk(null);
   }
@@ -49,7 +46,7 @@ export function DiagramMappingEditor({
     setError(null);
     setOk(null);
     try {
-      await onSave(diagram, maps);
+      await onSave("exploded", maps);
       setOk("Éclaté et liaisons enregistrés");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Enregistrement impossible");
@@ -62,36 +59,11 @@ export function DiagramMappingEditor({
     <div className="mt-8 border-t border-line pt-6">
       <h3 className="mb-1 font-semibold text-navy">Éclaté véhicule</h3>
       <p className="mb-4 text-sm text-slate-500">
-        Choisissez le schéma utilisé sur les devis, puis cliquez un panneau pour le lier à une pièce de la liste.
+        Cliquez un panneau pour le lier à une pièce de la liste.
       </p>
-      <div className="mb-5 grid gap-3 sm:grid-cols-2">
-        {CAR_DIAGRAMS.map((opt) => (
-          <label
-            key={opt.value}
-            className="flex cursor-pointer flex-col gap-2 rounded-xl border border-line p-3 has-[:checked]:border-amber has-[:checked]:ring-2 has-[:checked]:ring-amber/40"
-          >
-            <span className="flex items-center gap-2 text-sm font-medium text-navy">
-              <input
-                type="radio"
-                name="carDiagramChoice"
-                value={opt.value}
-                checked={diagram === opt.value}
-                onChange={() => {
-                  setDiagram(opt.value);
-                  setActiveZoneId(null);
-                }}
-              />
-              {opt.label}
-            </span>
-            <CarDiagramPreview variant={opt.value} />
-          </label>
-        ))}
-      </div>
-
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
         <div className="rounded-xl border border-line bg-gradient-to-b from-white to-mist p-2">
           <CarDiagramSvg
-            variant={diagram}
             selected={[]}
             dentCounts={{}}
             activeZoneId={activeZoneId}
@@ -108,8 +80,8 @@ export function DiagramMappingEditor({
               {zones.map((zone) => (
                 <option key={zone.id} value={zone.id}>
                   {zone.label}
-                  {maps[diagram][zone.id]
-                    ? ` → ${pieces.find((p) => p.id === maps[diagram][zone.id])?.label ?? "pièce"}`
+                  {maps.exploded[zone.id]
+                    ? ` → ${pieces.find((p) => p.id === maps.exploded[zone.id])?.label ?? "pièce"}`
                     : ""}
                 </option>
               ))}
@@ -131,7 +103,7 @@ export function DiagramMappingEditor({
           </Field>
           <ul className="max-h-64 space-y-1 overflow-auto text-sm">
             {zones.map((zone) => {
-              const piece = pieces.find((p) => p.id === maps[diagram][zone.id]);
+              const piece = pieces.find((p) => p.id === maps.exploded[zone.id]);
               return (
                 <li key={zone.id}>
                   <button

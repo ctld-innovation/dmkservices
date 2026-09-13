@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getSession, unauthorized, jsonError } from "@/lib/auth";
 import { buildEstimatePdf } from "@/lib/pdf";
+import { estimatePdfFilename } from "@/lib/utils";
 
 export async function GET(
   _req: Request,
@@ -32,10 +33,11 @@ export async function GET(
     prisma.lookupValue.findMany({ where: { category: "PANEL", active: true } }),
   ]);
   const pdf = await buildEstimatePdf(estimate, settings, photos, lookups);
+  const filename = estimatePdfFilename(estimate.vehicle.licensePlate);
   return new NextResponse(new Uint8Array(pdf), {
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": `attachment; filename="${estimate.number}.pdf"`,
+      "Content-Disposition": `attachment; filename="${filename}"`,
     },
   });
 }

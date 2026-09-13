@@ -7,7 +7,8 @@ const prisma = new PrismaClient();
 const PANELS = [
   "Toit",
   "Capot",
-  "Coffre / hayon",
+  "Coffre supérieur",
+  "Coffre inférieur",
   "Aile avant gauche",
   "Aile avant droite",
   "Aile arrière gauche",

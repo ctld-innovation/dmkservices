@@ -64,40 +64,60 @@ export const VEHICLE_LINK_ROLES = [
   { value: "INTERMEDIARY", label: "Intermédiaire" },
 ] as const;
 
-export const CAR_DIAGRAMS = [
-  { value: "exploded", label: "Éclaté (schéma panneaux, sans pare-chocs)" },
-  { value: "assembled", label: "Silhouette (vue assemblée)" },
-] as const;
+export const CAR_DIAGRAMS = [{ value: "exploded", label: "Éclaté véhicule" }] as const;
 
-export type CarDiagram = (typeof CAR_DIAGRAMS)[number]["value"];
+export type CarDiagram = "exploded" | "assembled";
 
-export function resolveCarDiagram(value?: string | null): CarDiagram {
-  return value === "assembled" ? "assembled" : "exploded";
+export function resolveCarDiagram(_value?: string | null): CarDiagram {
+  return "exploded";
 }
 
+/** Capot, côté gauche (avant → arrière), côté droit (avant → arrière), coffre. */
 export const DEFAULT_PANELS = [
-  "Toit",
-  "Capot",
-  "Coffre / hayon",
-  "Aile avant gauche",
-  "Aile avant droite",
-  "Aile arrière gauche",
-  "Aile arrière droite",
-  "Portière avant gauche",
-  "Portière avant droite",
-  "Portière arrière gauche",
-  "Portière arrière droite",
   "Pare-chocs avant",
-  "Pare-chocs arrière",
+  "Capot",
+  "Toit",
+  "Aile avant gauche",
   "Montant A gauche",
-  "Montant A droite",
-  "Montant B gauche",
-  "Montant B droite",
+  "Portière avant gauche",
   "Bas de caisse gauche",
-  "Bas de caisse droit",
+  "Montant B gauche",
+  "Portière arrière gauche",
   "Custode gauche",
+  "Aile arrière gauche",
+  "Aile avant droite",
+  "Montant A droite",
+  "Portière avant droite",
+  "Bas de caisse droit",
+  "Montant B droite",
+  "Portière arrière droite",
   "Custode droite",
+  "Aile arrière droite",
+  "Coffre supérieur",
+  "Coffre inférieur",
+  "Pare-chocs arrière",
 ];
+
+export function panelSortIndex(panel: string) {
+  if (!panel) return DEFAULT_PANELS.length + 1;
+  const index = DEFAULT_PANELS.indexOf(panel);
+  return index === -1 ? DEFAULT_PANELS.length : index;
+}
+
+export function sortByPanelOrder<T extends { panel: string }>(items: T[]): T[] {
+  return items
+    .map((item, index) => ({ item, index }))
+    .sort((a, b) => {
+      const pa = panelSortIndex(a.item.panel);
+      const pb = panelSortIndex(b.item.panel);
+      if (pa !== pb) return pa - pb;
+      if (pa === DEFAULT_PANELS.length) {
+        return a.item.panel.localeCompare(b.item.panel, "fr") || a.index - b.index;
+      }
+      return a.index - b.index;
+    })
+    .map(({ item }) => item);
+}
 
 export const STATUS_COLORS: Record<string, string> = {
   DRAFT: "badge-slate",

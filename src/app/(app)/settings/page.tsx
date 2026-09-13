@@ -2,10 +2,22 @@ import { prisma } from "@/lib/prisma";
 import { canAdmin, getSession } from "@/lib/auth";
 import { PageHeader } from "@/components/ui";
 import { SettingsForm } from "@/components/SettingsForm";
+import { syncPanelLookups } from "@/lib/panelLookups";
 
-export default async function SettingsPage() {
+const SETTINGS_TABS = ["company", "lookups", "users", "backup", "audit"] as const;
+
+export default async function SettingsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string }>;
+}) {
   const session = await getSession();
   const admin = canAdmin(session!.role);
+  const { tab } = await searchParams;
+  const defaultTab = SETTINGS_TABS.includes(tab as (typeof SETTINGS_TABS)[number])
+    ? (tab as (typeof SETTINGS_TABS)[number])
+    : "company";
+  await syncPanelLookups();
   const [settings, lookups, users, audits] = await Promise.all([
     prisma.companySettings.upsert({
       where: { id: "default" },
@@ -44,6 +56,8 @@ export default async function SettingsPage() {
         users={users}
         audits={audits}
         isAdmin={admin}
+        currentUser={session!}
+        defaultTab={defaultTab}
       />
     </div>
   );

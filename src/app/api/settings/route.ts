@@ -38,6 +38,7 @@ export async function PATCH(req: Request) {
   const parsed = settingsSchema.partial().safeParse(body);
   if (!parsed.success) return jsonError(parsed.error.issues[0]?.message ?? "Données invalides");
   const data = { ...parsed.data };
+  if (data.smtpReplyTo === "") data.smtpReplyTo = null;
   if (data.hagelExpert !== undefined) {
     data.hagelExpert = parseHagelExpertConfig(data.hagelExpert);
   }

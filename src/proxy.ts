@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readToken } from "@/lib/auth";
 
-const PUBLIC = ["/api/auth/login", "/api/locale"];
+const PUBLIC = [
+  "/api/auth/login",
+  "/api/auth/forgot-password",
+  "/api/auth/reset-password",
+  "/api/locale",
+];
 
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
@@ -21,8 +26,8 @@ export async function proxy(req: NextRequest) {
   const token = req.cookies.get("dmk_session")?.value;
   const session = token ? await readToken(token) : null;
 
-  if (pathname === "/login") {
-    if (session) return NextResponse.redirect(new URL("/", req.url));
+  if (pathname === "/login" || pathname.startsWith("/login/")) {
+    if (session && pathname === "/login") return NextResponse.redirect(new URL("/", req.url));
     return NextResponse.next();
   }
 

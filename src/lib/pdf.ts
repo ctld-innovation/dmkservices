@@ -3,8 +3,9 @@ import autoTable from "jspdf-autotable";
 import fs from "fs";
 import path from "path";
 import type { Estimate, EstimateLineItem, Client, Vehicle, User, CompanySettings, VehiclePhoto } from "@prisma/client";
-import { computeEstimateTotals, isMethodFixed, serviceTotalRows, estimateLineMethodFlags, METHOD_FLAG_COLUMNS, methodFlagMark } from "./calculations";
+import { computeEstimateTotalsWithSettings, isMethodFixed, serviceTotalRows, estimateLineMethodFlags, METHOD_FLAG_COLUMNS, methodFlagMark, formatMethodLegend } from "./calculations";
 import { formatDate, clientLabel, fullName } from "./utils";
+import { sortByPanelOrder } from "./constants";
 import {
   EXPLODED_PANEL_SHAPES,
   EXPLODED_VIEW,
@@ -209,17 +210,32 @@ export async function buildEstimatePdf(
   doc.setFontSize(18);
   doc.setTextColor(12, 25, 41);
   doc.text("DEVIS", pageW - margin, y + 6, { align: "right" });
+
+  const plate = (estimate.vehicle.licensePlate || "").toUpperCase();
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(12);
+  const plateW = Math.max(doc.getTextWidth(plate) + 8, 36);
+  const plateH = 8;
+  const plateX = pageW - margin - plateW;
+  const plateY = y + 8;
+  doc.setFillColor(0, 217, 245);
+  doc.setDrawColor(10, 61, 72);
+  doc.setLineWidth(0.45);
+  doc.roundedRect(plateX, plateY, plateW, plateH, 1.2, 1.2, "FD");
+  doc.setTextColor(10, 61, 72);
+  doc.text(plate, pageW - margin - 4, plateY + 5.7, { align: "right" });
+
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(10);
+  doc.setFontSize(9);
   doc.setTextColor(0, 184, 212);
-  doc.text(estimate.number, pageW - margin, y + 12, { align: "right" });
+  doc.text(estimate.number, pageW - margin, y + 21, { align: "right" });
   doc.setTextColor(80, 90, 100);
-  doc.text(`Date : ${formatDate(estimate.date)}`, pageW - margin, y + 17, { align: "right" });
+  doc.text(`Date : ${formatDate(estimate.date)}`, pageW - margin, y + 26, { align: "right" });
   if (estimate.damageDate) {
-    doc.text(`Sinistre : ${formatDate(estimate.damageDate)}`, pageW - margin, y + 22, { align: "right" });
+    doc.text(`Sinistre : ${formatDate(estimate.damageDate)}`, pageW - margin, y + 31, { align: "right" });
   }
 
-  y = 48;
+  y = 54;
   doc.setDrawColor(0, 229, 255);
   doc.setLineWidth(0.8);
   doc.line(margin, y, pageW - margin, y);
@@ -248,9 +264,7 @@ export async function buildEstimatePdf(
   doc.setTextColor(80, 90, 100);
   doc.text(`Estimateur : ${fullName(estimate.estimator.firstName, estimate.estimator.lastName)}`, margin, y);
 
-  const body = estimate.lineItems
-    .slice()
-    .sort((a, b) => a.sortOrder - b.sortOrder)
+  const body = sortByPanelOrder(estimate.lineItems)
     .map((line) => {
       const flags = estimateLineMethodFlags(line);
       const replacement = line.repairMethod === "PANEL_REPLACEMENT";
@@ -265,6 +279,9 @@ export async function buildEstimatePdf(
     });
 
   autoTable(doc, {
+    theme: "grid",
+    tableLineColor: [160, 200, 210],
+    tableLineWidth: 0.25,
     startY: y + 4,
     head: [
       [
@@ -278,7 +295,15 @@ export async function buildEstimatePdf(
       METHOD_FLAG_COLUMNS.map((col) => ({ content: col, styles: { halign: "center" } })),
     ],
     body,
-    styles: { fontSize: 7.5, cellPadding: 1.6, textColor: [30, 40, 50], halign: "center", valign: "middle" },
+    styles: {
+      fontSize: 7.5,
+      cellPadding: 1.6,
+      textColor: [30, 40, 50],
+      halign: "center",
+      valign: "middle",
+      lineWidth: 0.25,
+      lineColor: [160, 200, 210],
+    },
     headStyles: {
       fillColor: [0, 217, 245],
       textColor: [10, 61, 72],
@@ -286,6 +311,8 @@ export async function buildEstimatePdf(
       fontSize: 7.5,
       halign: "center",
       valign: "middle",
+      lineWidth: 0.3,
+      lineColor: [10, 61, 72],
     },
     alternateRowStyles: { fillColor: [244, 252, 254] },
     margin: { left: margin, right: margin },
@@ -299,9 +326,15 @@ export async function buildEstimatePdf(
   });
 
   const pageBottom = 284;
-  let ty = lastTableY(doc, y) + 6;
+  let ty = lastTableY(doc, y) + 4;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7);
+  doc.setTextColor(90, 100, 110);
+  const legendLines = doc.splitTextToSize(formatMethodLegend(), pageW - margin * 2);
+  doc.text(legendLines, margin, ty);
+  ty += legendLines.length * 3.2 + 5;
 
-  const totals = computeEstimateTotals(estimate);
+  const totals = computeEstimateTotalsWithSettings(estimate, settings);
   const gap = 4;
   const innerW = pageW - margin * 2;
   const boxW = (innerW - gap) / 2;

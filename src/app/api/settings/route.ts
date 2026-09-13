@@ -5,10 +5,11 @@ import { canAdmin, canWrite, getSession, unauthorized, forbidden, jsonError } fr
 import { settingsSchema } from "@/lib/validations";
 import { writeAudit } from "@/lib/audit";
 import { parseHagelExpertConfig } from "@/lib/hagelExpert";
+import { parseExplodedColors } from "@/lib/explodedStyles";
 import type { z } from "zod";
 
 function toPrismaSettingsData(data: Partial<z.infer<typeof settingsSchema>>) {
-  const { carDiagramMaps, hagelExpert, ...rest } = data;
+  const { carDiagramMaps, hagelExpert, explodedColors, ...rest } = data;
   return {
     ...rest,
     ...(carDiagramMaps !== undefined
@@ -16,6 +17,9 @@ function toPrismaSettingsData(data: Partial<z.infer<typeof settingsSchema>>) {
       : {}),
     ...(hagelExpert !== undefined
       ? { hagelExpert: hagelExpert === null ? Prisma.DbNull : hagelExpert }
+      : {}),
+    ...(explodedColors !== undefined
+      ? { explodedColors: explodedColors === null ? Prisma.DbNull : explodedColors }
       : {}),
   };
 }
@@ -41,6 +45,9 @@ export async function PATCH(req: Request) {
   if (data.smtpReplyTo === "") data.smtpReplyTo = null;
   if (data.hagelExpert !== undefined) {
     data.hagelExpert = parseHagelExpertConfig(data.hagelExpert);
+  }
+  if (data.explodedColors !== undefined) {
+    data.explodedColors = parseExplodedColors(data.explodedColors);
   }
   const keys = Object.keys(data);
   const writerTaxOnly =

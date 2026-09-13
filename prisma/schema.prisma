@@ -265,6 +265,7 @@ model CompanySettings {
   lastEstimateSeq    Int     @default(0)
   carDiagram         String  @default("exploded")
   carDiagramMaps     Json?
+  explodedColors     Json?
   hagelExpert        Json?
   termsAndConditions String? @db.Text
   smtpHost           String?

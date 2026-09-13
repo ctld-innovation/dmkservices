@@ -45,6 +45,7 @@ export default async function NewEstimatePage({
           panels,
         )}
         hagelExpert={settings.hagelExpert}
+        explodedColors={settings.explodedColors}
         initial={{
           clientId: sp.clientId,
           vehicleId: sp.vehicleId,

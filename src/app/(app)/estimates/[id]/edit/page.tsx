@@ -45,6 +45,7 @@ export default async function EditEstimatePage({ params }: { params: Promise<{ i
           panels,
         )}
         hagelExpert={settings?.hagelExpert}
+        explodedColors={settings?.explodedColors}
         initial={{
           date: estimate.date,
           damageDate: estimate.damageDate,

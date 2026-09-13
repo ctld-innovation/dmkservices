@@ -12,6 +12,13 @@ import {
   panelZoneId,
   resolveDiagramPanelMap,
 } from "./diagram";
+import {
+  explodedKindStyles,
+  explodedStylesFromLines,
+  explodedVisibleLegendKinds,
+  type ExplodedKindStyle,
+  type ExplodedPanelKind,
+} from "./explodedStyles";
 
 /** Helvetica (WinAnsi) ignore NBSP / espaces fins : les montants se décalent ou disparaissent. */
 function formatPdfCurrency(value: number) {
@@ -125,6 +132,8 @@ function drawExplodedDiagram(
   selected: string[],
   dentCounts: Record<string, number>,
   panelMap: Record<string, string>,
+  panelStyles: Record<string, ExplodedPanelKind>,
+  kindStyles: Record<ExplodedPanelKind, ExplodedKindStyle>,
 ) {
   const box = EXPLODED_VIEW.content;
   const height = (width * box.height) / box.width;
@@ -140,8 +149,9 @@ function drawExplodedDiagram(
       x: point.x - box.x,
       y: point.y - box.y,
     }));
-    doc.setFillColor(0, 217, 245);
-    doc.setDrawColor(10, 61, 72);
+    const style = panelStyles[piece] ? kindStyles[panelStyles[piece]] : kindStyles.DSP;
+    doc.setFillColor(...style.rgb);
+    doc.setDrawColor(...style.strokeRgb);
     doc.setLineWidth(0.25);
     fillPolygon(doc, points, x, y, scale, "FD");
     const dents = dentCounts[piece] ?? 0;
@@ -157,6 +167,42 @@ function drawExplodedDiagram(
     }
   }
   return height;
+}
+
+function drawExplodedLegend(
+  doc: jsPDF,
+  kinds: ExplodedPanelKind[],
+  x: number,
+  y: number,
+  maxWidth: number,
+  kindStyles: Record<ExplodedPanelKind, ExplodedKindStyle>,
+) {
+  if (!kinds.length) return 0;
+  const swatch = 3.2;
+  const gap = 5;
+  let cx = x;
+  let cy = y + 3.2;
+  let rows = 1;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7);
+  for (const kind of kinds) {
+    const style = kindStyles[kind];
+    const textW = doc.getTextWidth(style.label);
+    const itemW = swatch + 1.6 + textW + gap;
+    if (cx + itemW - gap - x > maxWidth && cx > x) {
+      cx = x;
+      cy += 5;
+      rows += 1;
+    }
+    doc.setFillColor(...style.rgb);
+    doc.setDrawColor(...style.strokeRgb);
+    doc.setLineWidth(0.2);
+    doc.roundedRect(cx, cy - swatch + 0.4, swatch, swatch, 0.4, 0.4, "FD");
+    doc.setTextColor(12, 25, 41);
+    doc.text(style.label, cx + swatch + 1.6, cy);
+    cx += itemW;
+  }
+  return rows * 5 + 2;
 }
 
 export async function buildEstimatePdf(
@@ -406,12 +452,16 @@ export async function buildEstimatePdf(
     ),
   ];
   const panelMap = resolveDiagramPanelMap(settings.carDiagramMaps, "exploded", lookups);
+  const panelStyles = explodedStylesFromLines(estimate.lineItems);
+  const kindStyles = explodedKindStyles(settings.explodedColors);
+  const legendKinds = explodedVisibleLegendKinds(selectedPanels, panelStyles, panelMap);
+  const legendReserve = legendKinds.length ? 8 : 0;
   const fullW = pageW - margin * 2;
   const diagramW = fullW * 0.7;
   const diagramX = margin + (fullW - diagramW) / 2;
   const diagramH = (diagramW * EXPLODED_VIEW.content.height) / EXPLODED_VIEW.content.width;
   let diagramY = ty + boxH + 4;
-  if (diagramY + 5 + diagramH > pageBottom) {
+  if (diagramY + 5 + diagramH + legendReserve > pageBottom) {
     doc.addPage();
     diagramY = 16;
   }
@@ -428,9 +478,12 @@ export async function buildEstimatePdf(
     selectedPanels,
     dentCounts,
     panelMap,
+    panelStyles,
+    kindStyles,
   );
+  const legendH = drawExplodedLegend(doc, legendKinds, diagramX, diagramY + 2 + usedH + 1, diagramW, kindStyles);
 
-  let notesY = diagramY + 2 + usedH + 6;
+  let notesY = diagramY + 2 + usedH + legendH + 6;
   if (notesY > pageBottom - 24) {
     doc.addPage();
     notesY = 18;

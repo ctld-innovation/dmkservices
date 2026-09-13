@@ -156,6 +156,7 @@ const SETTINGS_KEYS = [
   "lastEstimateSeq",
   "carDiagram",
   "carDiagramMaps",
+  "explodedColors",
   "hagelExpert",
   "termsAndConditions",
   "smtpHost",

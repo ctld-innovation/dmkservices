@@ -44,6 +44,10 @@ prisma/dev.db
 public/uploads/**
 !public/uploads/.gitkeep
 
+# backups serveur
+/data/backups/*
+!/data/backups/.gitkeep
+
 # vercel
 .vercel
 

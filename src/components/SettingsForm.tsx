@@ -8,6 +8,7 @@ import { Button, ErrorText, Field, Input, Textarea } from "@/components/ui";
 import { DiagramMappingEditor } from "@/components/DiagramMappingEditor";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { UsersSettings, type UserRow } from "@/components/UsersSettings";
+import { BackupSettings } from "@/components/BackupSettings";
 import type { DiagramMaps } from "@/lib/diagram";
 import type { SessionUser } from "@/lib/auth";
 import Link from "next/link";
@@ -428,21 +429,7 @@ export function SettingsForm({
         </div>
       ) : null}
 
-      {tab === "backup" ? (
-        <div className="card space-y-3 p-6">
-          <p className="text-sm text-slate-600">
-            Téléchargez une sauvegarde JSON de l&apos;ensemble des données. La base MySQL se configure via{" "}
-            <code>DATABASE_URL</code>.
-          </p>
-          {isAdmin ? (
-            <a href="/api/backup" className="btn btn-primary inline-flex">
-              Télécharger la sauvegarde JSON
-            </a>
-          ) : (
-            <p className="text-sm">Réservé à l&apos;administrateur.</p>
-          )}
-        </div>
-      ) : null}
+      {tab === "backup" ? <BackupSettings isAdmin={isAdmin} /> : null}
       {editingLookup ? (
         <div className="modal-overlay" role="presentation" onClick={() => !savingLookup && setEditingLookup(null)}>
           <form

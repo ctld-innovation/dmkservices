@@ -21,7 +21,6 @@ export default async function EstimateDetailPage({ params }: { params: Promise<{
   const [settings, estimate] = await Promise.all([
     prisma.companySettings.findUnique({
       where: { id: "default" },
-      select: { name: true, hagelExpert: true, defaultLaborRate: true, smtpReplyTo: true },
     }),
     prisma.estimate.findUnique({
       where: { id },

@@ -1,12 +1,17 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { CarDiagram } from "@/lib/constants";
-import { diagramZones, parseDiagramMaps, type DiagramMaps } from "@/lib/diagram";
+import {
+  diagramZones,
+  parseDiagramMaps,
+  pieceLabelForZone,
+  type DiagramMaps,
+} from "@/lib/diagram";
 import { Button, Field, Select } from "@/components/ui";
 import { CarDiagramSvg } from "@/components/CarPanelPicker";
 
-type Piece = { id: string; label: string };
+type Piece = { id: string; label: string; value?: string };
 
 export function DiagramMappingEditor({
   initialMaps,
@@ -26,9 +31,20 @@ export function DiagramMappingEditor({
   const [ok, setOk] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    setMaps(parseDiagramMaps(initialMaps));
+  }, [initialMaps]);
+
   const zones = useMemo(() => diagramZones("exploded"), []);
   const activeZone = zones.find((zone) => zone.id === activeZoneId) ?? null;
   const assignedId = activeZone ? maps.exploded[activeZone.id] ?? "" : "";
+  const panelMap = useMemo(
+    () =>
+      Object.fromEntries(
+        zones.map((zone) => [zone.id, pieceLabelForZone(zone, maps.exploded[zone.id], pieces)]),
+      ),
+    [maps.exploded, pieces, zones],
+  );
 
   function assignPiece(lookupId: string) {
     if (!activeZone) return;
@@ -59,13 +75,14 @@ export function DiagramMappingEditor({
     <div className="mt-8 border-t border-line pt-6">
       <h3 className="mb-1 font-semibold text-navy">Éclaté véhicule</h3>
       <p className="mb-4 text-sm text-slate-500">
-        Cliquez un panneau pour le lier à une pièce de la liste.
+        Cliquez un panneau pour le lier à une pièce de la liste. Le nom affiché suit le nom de la pièce.
       </p>
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
         <div className="rounded-xl border border-line bg-gradient-to-b from-white to-mist p-2">
           <CarDiagramSvg
             selected={[]}
             dentCounts={{}}
+            panelMap={panelMap}
             activeZoneId={activeZoneId}
             onSelectZone={setActiveZoneId}
           />
@@ -80,9 +97,7 @@ export function DiagramMappingEditor({
               {zones.map((zone) => (
                 <option key={zone.id} value={zone.id}>
                   {zone.label}
-                  {maps.exploded[zone.id]
-                    ? ` → ${pieces.find((p) => p.id === maps.exploded[zone.id])?.label ?? "pièce"}`
-                    : ""}
+                  {` → ${pieceLabelForZone(zone, maps.exploded[zone.id], pieces)}`}
                 </option>
               ))}
             </Select>
@@ -93,7 +108,11 @@ export function DiagramMappingEditor({
               disabled={!activeZone || !isAdmin}
               onChange={(e) => assignPiece(e.target.value)}
             >
-              <option value="">{activeZone ? `Par défaut : ${activeZone.label}` : "—"}</option>
+              <option value="">
+                {activeZone
+                  ? `Par défaut : ${pieceLabelForZone(activeZone, undefined, pieces)}`
+                  : "—"}
+              </option>
               {pieces.map((piece) => (
                 <option key={piece.id} value={piece.id}>
                   {piece.label}
@@ -103,7 +122,7 @@ export function DiagramMappingEditor({
           </Field>
           <ul className="max-h-64 space-y-1 overflow-auto text-sm">
             {zones.map((zone) => {
-              const piece = pieces.find((p) => p.id === maps.exploded[zone.id]);
+              const label = pieceLabelForZone(zone, maps.exploded[zone.id], pieces);
               return (
                 <li key={zone.id}>
                   <button
@@ -114,8 +133,8 @@ export function DiagramMappingEditor({
                     onClick={() => setActiveZoneId(zone.id)}
                   >
                     <span>{zone.label}</span>
-                    <span className={piece ? "text-navy" : "text-slate-400"}>
-                      {piece ? piece.label : zone.label}
+                    <span className={label === zone.label ? "text-slate-400" : "text-navy"}>
+                      {label}
                     </span>
                   </button>
                 </li>

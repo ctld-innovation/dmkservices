@@ -4,6 +4,15 @@ import { canAdmin, canWrite, getSession, unauthorized, forbidden, jsonError } fr
 import { DEFAULT_PANELS } from "@/lib/constants";
 import { syncVehicleCatalogLookups } from "@/lib/vehicleLookups";
 import { syncPanelLookups } from "@/lib/panelLookups";
+import { remapDiagramMapsForRenamedPanel, unmapDiagramMapsForPanel, type DiagramMaps } from "@/lib/diagram";
+
+async function saveDiagramMaps(maps: DiagramMaps) {
+  await prisma.companySettings.upsert({
+    where: { id: "default" },
+    update: { carDiagramMaps: maps },
+    create: { id: "default", name: "DMK Services", carDiagramMaps: maps },
+  });
+}
 
 export async function GET() {
   const session = await getSession();
@@ -90,6 +99,10 @@ export async function PATCH(req: Request) {
       where: { panel: current.label },
       data: { panel: item.label },
     });
+    const settings = await prisma.companySettings.findUnique({ where: { id: "default" } });
+    await saveDiagramMaps(
+      remapDiagramMapsForRenamedPanel(settings?.carDiagramMaps, item, current.label),
+    );
   }
   return NextResponse.json(item);
 }
@@ -104,6 +117,8 @@ export async function DELETE(req: Request) {
   if (!item) return jsonError("Pièce introuvable", 404);
   if (item.category === "PANEL") {
     await prisma.lookupValue.update({ where: { id }, data: { active: false } });
+    const settings = await prisma.companySettings.findUnique({ where: { id: "default" } });
+    await saveDiagramMaps(unmapDiagramMapsForPanel(settings?.carDiagramMaps, id));
   } else {
     await prisma.lookupValue.delete({ where: { id } });
   }

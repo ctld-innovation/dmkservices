@@ -3,7 +3,7 @@ import autoTable from "jspdf-autotable";
 import fs from "fs";
 import path from "path";
 import type { Estimate, EstimateLineItem, Client, Vehicle, User, CompanySettings, VehiclePhoto } from "@prisma/client";
-import { computeEstimateTotalsWithSettings, isMethodFixed, serviceTotalRows, estimateLineMethodFlags, METHOD_FLAG_COLUMNS, methodFlagMark, formatMethodLegend } from "./calculations";
+import { computeEstimateTotalsWithSettings, isMethodFixed, serviceTotalRows, estimateLineMethodFlags, METHOD_FLAG_COLUMNS, methodFlagMark, formatMethodLegend, formatLineExtraWu } from "./calculations";
 import { formatDate, clientLabel, fullName } from "./utils";
 import { sortByPanelOrder } from "./constants";
 import {
@@ -274,6 +274,7 @@ export async function buildEstimatePdf(
         replacement ? "—" : line.dentSize ? `${line.dentSize} mm` : "—",
         replacement ? "—" : String(line.dentCount || ""),
         replacement ? "—" : Number(line.laborHours).toFixed(1),
+        formatLineExtraWu(line),
         isMethodFixed(estimate.servicePricing, line.repairMethod) ? "—" : formatPdfCurrency(line.lineTotal),
       ];
     });
@@ -290,6 +291,7 @@ export async function buildEstimatePdf(
         { content: "Taille", rowSpan: 2 },
         { content: "Bosses", rowSpan: 2 },
         { content: "Heures", rowSpan: 2 },
+        { content: "Ex UT", rowSpan: 2 },
         { content: "Total", rowSpan: 2 },
       ],
       METHOD_FLAG_COLUMNS.map((col) => ({ content: col, styles: { halign: "center" } })),
@@ -321,7 +323,8 @@ export async function buildEstimatePdf(
       6: { halign: "right" },
       7: { halign: "right" },
       8: { halign: "right" },
-      9: { halign: "right", fontStyle: "bold" },
+      9: { halign: "right" },
+      10: { halign: "right", fontStyle: "bold" },
     },
   });
 

@@ -322,7 +322,7 @@ export function EstimateForm({
 
   function openPanel(panel: string) {
     const existing = lines.find((line) => line.panel === panel);
-    const draft = existing ?? makeLine({ panel, damageType: "DENT", dentCount: 1, dentSize: 20 });
+    const draft = existing ?? makeLine({ panel, damageType: "DENT", dentCount: 0, dentSize: 20 });
     setPanelDraft(
       draft.repairMethod === "PDR" ? { ...draft, laborHours: computeHagelHours(hagel, draft, 0) } : draft,
     );

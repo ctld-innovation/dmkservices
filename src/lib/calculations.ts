@@ -166,8 +166,8 @@ export const METHOD_FLAG_COLUMNS = ["DSP", "DAP", "ALU", "COL", "RP"] as const;
 
 export const METHOD_ABBREV_LEGEND = [
   { code: "DSP", label: "Débosselage sans peinture" },
+  { code: "DAP", label: "Débosselage avec peinture" },
   { code: "ALU", label: "Aluminium" },
-  { code: "DAP", label: "Réduction DAP" },
   { code: "COL", label: "Colle" },
   { code: "RP", label: "Réserve peinture" },
   { code: "Ex UT", label: "Extra unités de travail" },
@@ -185,7 +185,7 @@ export function estimateLineMethodFlags(line: {
   paintReserve?: boolean | null;
 }): Record<(typeof METHOD_FLAG_COLUMNS)[number], boolean> {
   return {
-    DSP: line.repairMethod === "PDR",
+    DSP: line.repairMethod === "PDR" && !line.dap,
     DAP: Boolean(line.dap),
     ALU: Boolean(line.aluminum),
     COL: Boolean(line.glue),
@@ -195,6 +195,11 @@ export function estimateLineMethodFlags(line: {
 
 export function methodFlagMark(on: boolean) {
   return on ? "X" : "";
+}
+
+export function formatLineExtraWu(line: { extraWu?: number | null; repairMethod?: string | null }) {
+  if (line.repairMethod === "PANEL_REPLACEMENT") return "—";
+  return (Number(line.extraWu) || 0).toFixed(1);
 }
 
 export function computeEstimateTotalsWithSettings(

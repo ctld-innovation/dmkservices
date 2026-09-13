@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { computeEstimateTotalsWithSettings, isMethodFixed, estimateLineMethodFlags, METHOD_FLAG_COLUMNS, methodFlagMark } from "@/lib/calculations";
+import { computeEstimateTotalsWithSettings, isMethodFixed, estimateLineMethodFlags, METHOD_FLAG_COLUMNS, methodFlagMark, formatLineExtraWu } from "@/lib/calculations";
 import { clientLabel, formatCurrency, formatDate, formatDateTime, fullName, vehicleLabel } from "@/lib/utils";
 import {
   ESTIMATE_STATUSES,
@@ -113,6 +113,7 @@ export default async function EstimateDetailPage({ params }: { params: Promise<{
               <th rowSpan={2}>Taille</th>
               <th rowSpan={2}>Bosses</th>
               <th rowSpan={2}>Heures</th>
+              <th rowSpan={2}>Ex UT</th>
               <th rowSpan={2}>Total</th>
             </tr>
             <tr>
@@ -138,6 +139,7 @@ export default async function EstimateDetailPage({ params }: { params: Promise<{
                   <td>{replacement ? "—" : line.dentSize ? `${line.dentSize} mm` : "—"}</td>
                   <td>{replacement ? "—" : line.dentCount}</td>
                   <td>{replacement ? "—" : line.laborHours}</td>
+                  <td>{formatLineExtraWu(line)}</td>
                   <td className="font-medium">
                     {isMethodFixed(estimate.servicePricing, line.repairMethod)
                       ? "—"

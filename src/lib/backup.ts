@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { mkdir, readdir, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { hashPassword, type SessionUser } from "@/lib/auth";
 
@@ -220,9 +221,9 @@ function chunkRows<T>(rows: T[], size = 200) {
 }
 
 function createManyOps(
-  createMany: (args: { data: Array<Record<string, unknown>> }) => unknown,
+  createMany: (args: { data: Array<Record<string, unknown>> }) => Prisma.PrismaPromise<unknown>,
   rows: Array<Record<string, unknown>>,
-) {
+): Prisma.PrismaPromise<unknown>[] {
   return chunkRows(datedRows(rows)).map((data) => createMany({ data }));
 }
 
@@ -421,45 +422,43 @@ export async function restoreBackupPayload(payload: BackupPayload, session: Sess
     .map((row) => pick(row, AUDIT_KEYS))
     .map((row) => (row.userId && !userIds.has(String(row.userId)) ? { ...row, userId: null } : row));
 
-  await prisma.$transaction(
-    [
-      prisma.estimateLineItem.deleteMany(),
-      prisma.estimateStatusLog.deleteMany(),
-      prisma.auditLog.deleteMany(),
-      prisma.vehiclePhoto.deleteMany(),
-      prisma.clientVehicle.deleteMany(),
-      prisma.estimate.deleteMany(),
-      prisma.client.deleteMany(),
-      prisma.vehicle.deleteMany(),
-      prisma.lookupValue.deleteMany(),
-      prisma.laborRate.deleteMany(),
-      prisma.companySettings.deleteMany(),
-      prisma.user.deleteMany(),
-      ...createManyOps((args) => prisma.user.createMany({ data: args.data as never }), users),
-      ...createManyOps(
-        (args) => prisma.companySettings.createMany({ data: args.data as never }),
-        settings,
-      ),
-      ...createManyOps((args) => prisma.lookupValue.createMany({ data: args.data as never }), lookups),
-      ...createManyOps((args) => prisma.laborRate.createMany({ data: args.data as never }), laborRates),
-      ...createManyOps((args) => prisma.client.createMany({ data: args.data as never }), clients),
-      ...createManyOps((args) => prisma.vehicle.createMany({ data: args.data as never }), vehicles),
-      ...createManyOps(
-        (args) => prisma.clientVehicle.createMany({ data: args.data as never }),
-        vehicleLinks,
-      ),
-      ...createManyOps((args) => prisma.vehiclePhoto.createMany({ data: args.data as never }), photos),
-      ...createManyOps((args) => prisma.estimate.createMany({ data: args.data as never }), estimates),
-      ...createManyOps(
-        (args) => prisma.estimateLineItem.createMany({ data: args.data as never }),
-        lineItems,
-      ),
-      ...createManyOps(
-        (args) => prisma.estimateStatusLog.createMany({ data: args.data as never }),
-        statusLogs,
-      ),
-      ...createManyOps((args) => prisma.auditLog.createMany({ data: args.data as never }), audits),
-    ],
-    { timeout: 120_000, maxWait: 15_000 },
-  );
+  const ops: Prisma.PrismaPromise<unknown>[] = [
+    prisma.estimateLineItem.deleteMany(),
+    prisma.estimateStatusLog.deleteMany(),
+    prisma.auditLog.deleteMany(),
+    prisma.vehiclePhoto.deleteMany(),
+    prisma.clientVehicle.deleteMany(),
+    prisma.estimate.deleteMany(),
+    prisma.client.deleteMany(),
+    prisma.vehicle.deleteMany(),
+    prisma.lookupValue.deleteMany(),
+    prisma.laborRate.deleteMany(),
+    prisma.companySettings.deleteMany(),
+    prisma.user.deleteMany(),
+    ...createManyOps((args) => prisma.user.createMany({ data: args.data as never }), users),
+    ...createManyOps(
+      (args) => prisma.companySettings.createMany({ data: args.data as never }),
+      settings,
+    ),
+    ...createManyOps((args) => prisma.lookupValue.createMany({ data: args.data as never }), lookups),
+    ...createManyOps((args) => prisma.laborRate.createMany({ data: args.data as never }), laborRates),
+    ...createManyOps((args) => prisma.client.createMany({ data: args.data as never }), clients),
+    ...createManyOps((args) => prisma.vehicle.createMany({ data: args.data as never }), vehicles),
+    ...createManyOps(
+      (args) => prisma.clientVehicle.createMany({ data: args.data as never }),
+      vehicleLinks,
+    ),
+    ...createManyOps((args) => prisma.vehiclePhoto.createMany({ data: args.data as never }), photos),
+    ...createManyOps((args) => prisma.estimate.createMany({ data: args.data as never }), estimates),
+    ...createManyOps(
+      (args) => prisma.estimateLineItem.createMany({ data: args.data as never }),
+      lineItems,
+    ),
+    ...createManyOps(
+      (args) => prisma.estimateStatusLog.createMany({ data: args.data as never }),
+      statusLogs,
+    ),
+    ...createManyOps((args) => prisma.auditLog.createMany({ data: args.data as never }), audits),
+  ];
+  await prisma.$transaction(ops);
 }

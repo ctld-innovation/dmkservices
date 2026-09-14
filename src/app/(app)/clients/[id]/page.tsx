@@ -5,6 +5,7 @@ import { clientLabel, formatDate, formatDateTime, fullName, vehicleLabel } from 
 import { CLIENT_TYPES, CLIENT_STATUSES, ESTIMATE_STATUSES, STATUS_COLORS, VEHICLE_LINK_ROLES, labelOf } from "@/lib/constants";
 import { Card, PageHeader } from "@/components/ui";
 import { DeleteButton, WriteOnly } from "@/components/Actions";
+import { EstimateLink } from "@/components/EstimateViewMemory";
 import { canWrite, getSession } from "@/lib/auth";
 import { ClientVehiclesCard } from "@/components/AddClientVehicle";
 
@@ -164,9 +165,9 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
               {client.estimates.map((est) => (
                 <tr key={est.id}>
                   <td>
-                    <Link href={`/estimates/${est.id}`} className="font-semibold text-navy">
+                    <EstimateLink id={est.id} className="font-semibold text-navy">
                       {est.number}
-                    </Link>
+                    </EstimateLink>
                   </td>
                   <td>{formatDate(est.date)}</td>
                   <td>{vehicleLabel(est.vehicle)}</td>

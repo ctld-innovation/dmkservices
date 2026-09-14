@@ -12,6 +12,7 @@ import {
 import { Card, PageHeader } from "@/components/ui";
 import { EstimateTotalsPanels } from "@/components/EstimateTotalsPanels";
 import { DeleteButton, DuplicateEstimateButton, EmailEstimate, StatusActions, WriteOnly } from "@/components/Actions";
+import { EstimateViewTracker } from "@/components/EstimateViewMemory";
 import { canWrite, getSession } from "@/lib/auth";
 
 export default async function EstimateDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -38,6 +39,7 @@ export default async function EstimateDetailPage({ params }: { params: Promise<{
 
   return (
     <div>
+      <EstimateViewTracker id={id} mode="view" />
       <PageHeader
         title={estimate.number}
         subtitle={`${clientLabel(estimate.client)} · ${vehicleLabel(estimate.vehicle)}`}

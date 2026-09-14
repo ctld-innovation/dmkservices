@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { DAMAGE_TYPES, DENT_ORIENTATIONS, ESTIMATE_REPAIR_METHODS } from "@/lib/constants";
+import { DAMAGE_TYPES, DENT_ORIENTATIONS, ESTIMATE_REPAIR_METHODS, isMontantPanel } from "@/lib/constants";
 import { computeHagelHours, computeHagelWorkUnits, hagelSizeOptions, type HagelExpertConfig } from "@/lib/hagelExpert";
 import { Button, Field, Input, Select } from "@/components/ui";
 
@@ -101,7 +101,13 @@ export function PanelLineDialog({
         </div>
         <div className="grid gap-4 p-5 sm:grid-cols-2">
           <Field label="Pièce">
-            <Select value={form.panel} onChange={(e) => patch({ panel: e.target.value })}>
+            <Select
+              value={form.panel}
+              onChange={(e) => {
+                const panel = e.target.value;
+                patch(isMontantPanel(panel) ? { panel, glue: true } : { panel });
+              }}
+            >
               <option value="">—</option>
               {panels.map((panel) => (
                 <option key={panel} value={panel}>

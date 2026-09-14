@@ -5,6 +5,7 @@ import { formatDate, formatDateTime, vehicleLabel, clientLabel } from "@/lib/uti
 import { ESTIMATE_STATUSES, FUEL_TYPES, STATUS_COLORS, VEHICLE_LINK_ROLES, labelOf } from "@/lib/constants";
 import { Card, PageHeader } from "@/components/ui";
 import { DeleteButton, WriteOnly } from "@/components/Actions";
+import { EstimateLink } from "@/components/EstimateViewMemory";
 import { DeletePhotoButton, PhotoUploader } from "@/components/PhotoUploader";
 import { canWrite, getSession } from "@/lib/auth";
 
@@ -115,9 +116,9 @@ export default async function VehicleDetailPage({ params }: { params: Promise<{ 
               {vehicle.estimates.map((est) => (
                 <tr key={est.id}>
                   <td>
-                    <Link href={`/estimates/${est.id}`} className="font-semibold text-navy">
+                    <EstimateLink id={est.id} className="font-semibold text-navy">
                       {est.number}
-                    </Link>
+                    </EstimateLink>
                   </td>
                   <td>{formatDate(est.date)}</td>
                   <td>{clientLabel(est.client)}</td>

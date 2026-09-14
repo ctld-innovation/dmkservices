@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { PrintButton } from "@/components/PrintButton";
 import { EstimateDocument } from "@/components/EstimateDocument";
+import { EstimateLink } from "@/components/EstimateViewMemory";
 
 export default async function PrintEstimatePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -27,9 +28,9 @@ export default async function PrintEstimatePage({ params }: { params: Promise<{ 
     <div className="print-sheet mx-auto max-w-[210mm] bg-white p-8 text-black print:max-w-none print:p-[16mm]">
       <div className="no-print mb-4 flex gap-2">
         <PrintButton />
-        <a href={`/estimates/${id}`} className="btn btn-ghost">
+        <EstimateLink id={id} className="btn btn-ghost">
           Retour
-        </a>
+        </EstimateLink>
         <a href={`/api/estimates/${id}/pdf`} className="btn btn-navy" target="_blank" rel="noreferrer">
           Télécharger PDF
         </a>

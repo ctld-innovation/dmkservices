@@ -5,6 +5,7 @@ import { pagination, clientLabel, formatCurrency, formatDate, vehicleLabel } fro
 import { ESTIMATE_STATUSES, STATUS_COLORS, labelOf } from "@/lib/constants";
 import { Card, PageHeader, Pagination, EmptyState } from "@/components/ui";
 import { WriteOnly } from "@/components/Actions";
+import { EstimateLink } from "@/components/EstimateViewMemory";
 import { canWrite, getSession } from "@/lib/auth";
 
 export default async function EstimatesPage({
@@ -95,9 +96,9 @@ export default async function EstimatesPage({
                   return (
                     <tr key={est.id}>
                       <td>
-                        <Link href={`/estimates/${est.id}`} className="font-semibold text-navy">
+                        <EstimateLink id={est.id} className="font-semibold text-navy">
                           {est.number}
-                        </Link>
+                        </EstimateLink>
                       </td>
                       <td>{formatDate(est.date)}</td>
                       <td>{clientLabel(est.client)}</td>

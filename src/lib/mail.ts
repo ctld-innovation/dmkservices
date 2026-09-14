@@ -77,6 +77,13 @@ export function smtpErrorMessage(error: unknown) {
   return `Envoi impossible : ${message}`;
 }
 
+export function splitMailAddresses(value?: string | null) {
+  return (value || "")
+    .split(/[,;]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 export async function sendCompanyMail(
   settings: CompanySettings,
   options: {
@@ -91,6 +98,11 @@ export async function sendCompanyMail(
   if (!smtpConfigured(settings)) {
     throw new Error("SMTP_NOT_CONFIGURED");
   }
+  const to = splitMailAddresses(options.to);
+  const cc = splitMailAddresses(options.cc);
+  if (!to.length) {
+    throw new Error("Aucun destinataire renseigné");
+  }
   const identities = resolveMailIdentities(settings);
   const transporter = nodemailer.createTransport({
     host: settings.smtpHost!,
@@ -102,10 +114,13 @@ export async function sendCompanyMail(
     socketTimeout: 10_000,
   });
   const payload = {
-    envelope: identities.envelopeFrom ? { from: identities.envelopeFrom } : undefined,
+    // Nodemailer ignore to/cc du message si envelope.to est absent → "No recipients defined".
+    envelope: identities.envelopeFrom
+      ? { from: identities.envelopeFrom, to: [...to, ...cc] }
+      : undefined,
     replyTo: identities.replyTo,
-    to: options.to,
-    cc: options.cc || undefined,
+    to,
+    cc: cc.length ? cc : undefined,
     subject: options.subject,
     text: options.text,
     html: options.html,

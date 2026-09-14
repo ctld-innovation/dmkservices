@@ -8,6 +8,7 @@ import { getSession, canWrite } from "@/lib/auth";
 import { Card, PageHeader } from "@/components/ui";
 import { ClientTypeChart, StatusChart } from "@/components/Charts";
 import { WriteOnly } from "@/components/Actions";
+import { EstimateLink } from "@/components/EstimateViewMemory";
 
 export default async function DashboardPage() {
   const session = await getSession();
@@ -155,9 +156,9 @@ export default async function DashboardPage() {
                 return (
                   <tr key={est.id}>
                     <td>
-                      <Link href={`/estimates/${est.id}`} className="font-semibold text-navy">
+                      <EstimateLink id={est.id} className="font-semibold text-navy">
                         {est.number}
-                      </Link>
+                      </EstimateLink>
                     </td>
                     <td>{formatDate(est.date)}</td>
                     <td>{clientLabel(est.client)}</td>

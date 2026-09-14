@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireWriter } from "@/lib/auth";
 import { PageHeader } from "@/components/ui";
 import { EstimateForm } from "@/components/EstimateForm";
+import { EstimateViewTracker } from "@/components/EstimateViewMemory";
 import { resolveDiagramPanelMap } from "@/lib/diagram";
 import { resolveCarDiagram } from "@/lib/constants";
 import { ensureLaborRates } from "@/lib/laborRates";
@@ -28,6 +29,7 @@ export default async function EditEstimatePage({ params }: { params: Promise<{ i
 
   return (
     <div>
+      <EstimateViewTracker id={id} mode="edit" />
       <PageHeader title={`Modifier ${estimate.number}`} />
       <EstimateForm
         id={id}

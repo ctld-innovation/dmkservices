@@ -1,14 +1,16 @@
 "use client";
 
-import { DragEvent, useEffect, useMemo, useState } from "react";
+import { DragEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { GripVertical, Plus, RefreshCw, Trash2 } from "lucide-react";
 import {
   DAMAGE_TYPES,
   ESTIMATE_REPAIR_METHODS,
   ESTIMATE_STATUSES,
+  isMontantPanel,
   sortByPanelOrder,
 } from "@/lib/constants";
+import { rememberEstimateView } from "@/lib/estimateView";
 import { computeLineTotal, computeLineLabor, computeEstimateTotals, parseServicePricing, isMethodFixed, FORFAIT_SERVICE_KEYS, SERVICE_LABELS, serviceTotalRows, type ServicePricing } from "@/lib/calculations";
 import { formatCurrency, toInputDate, cn, round2 } from "@/lib/utils";
 import { Button, ErrorText, Field, Input, Select, Textarea } from "@/components/ui";
@@ -159,6 +161,45 @@ export function EstimateForm({
     preparation: Boolean(initial?.applyVehiclePrep),
     finish: Boolean(initial?.applyVehicleFinish),
   });
+  const [saveHint, setSaveHint] = useState<string | null>(null);
+  const estimateIdRef = useRef(id);
+  const persistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const persistBusy = useRef(false);
+  const persistQueued = useRef<Line[] | null>(null);
+  const persistSkip = useRef(false);
+  const linesRef = useRef<Line[]>([]);
+  const persistCtx = useRef({
+    clientId,
+    vehicleId,
+    dismantlingAmount,
+    servicePricing,
+    vehicleExtras,
+    vat,
+    estimatorId,
+  });
+  persistCtx.current = {
+    clientId,
+    vehicleId,
+    dismantlingAmount,
+    servicePricing,
+    vehicleExtras,
+    vat,
+    estimatorId,
+  };
+  useEffect(() => {
+    estimateIdRef.current = id;
+  }, [id]);
+  useEffect(() => {
+    if (id) rememberEstimateView(id, "edit");
+  }, [id]);
+  useEffect(() => {
+    return () => {
+      if (!persistTimer.current) return;
+      clearTimeout(persistTimer.current);
+      persistTimer.current = null;
+      void persistEstimate(linesRef.current);
+    };
+  }, []);
 
   const defaultCatalog = rateCatalog.find((r) => r.isDefault && r.active) ?? rateCatalog.find((r) => r.active);
   const catalogById = useMemo(
@@ -213,7 +254,7 @@ export function EstimateForm({
       dentSize: Number(patch.dentSize) || base.dentSize,
       orientation: patch.orientation === "VERTICAL" ? "VERTICAL" : "HORIZONTAL",
       aluminum: Boolean(patch.aluminum),
-      glue: Boolean(patch.glue),
+      glue: patch.glue == null ? isMontantPanel(String(patch.panel ?? base.panel)) : Boolean(patch.glue),
       dap: Boolean(patch.dap),
       paintReserve: Boolean(patch.paintReserve),
       extraWu: Number(patch.extraWu) || 0,
@@ -242,6 +283,7 @@ export function EstimateForm({
       : [makeLine()];
     return applyHagelHoursToLines(mapped, hagel);
   });
+  linesRef.current = lines;
 
   const filteredVehicles = useMemo(
     () => (clientId ? vehicleList.filter((v) => v.clients.some((c) => c.clientId === clientId)) : vehicleList),
@@ -303,8 +345,12 @@ export function EstimateForm({
   }
 
   function updateLine(index: number, patch: Partial<Line>) {
+    const nextPatch =
+      patch.panel && patch.glue === undefined && isMontantPanel(patch.panel)
+        ? { ...patch, glue: true }
+        : patch;
     setLines((prev) => {
-      const next = prev.map((line, i) => (i === index ? { ...line, ...patch } : line));
+      const next = prev.map((line, i) => (i === index ? { ...line, ...nextPatch } : line));
       const hagelFields = [
         "dentCount",
         "dentSize",
@@ -316,10 +362,15 @@ export function EstimateForm({
         "repairMethod",
         "panel",
       ];
-      if (Object.keys(patch).some((key) => hagelFields.includes(key))) {
-        return sortByPanelOrder(withHagel(next));
+      const result = Object.keys(nextPatch).some((key) => hagelFields.includes(key))
+        ? sortByPanelOrder(withHagel(next))
+        : nextPatch.panel !== undefined
+          ? sortByPanelOrder(next)
+          : next;
+      if (Object.prototype.hasOwnProperty.call(nextPatch, "dentCount")) {
+        queuePersist(result, false);
       }
-      return patch.panel !== undefined ? sortByPanelOrder(next) : next;
+      return result;
     });
   }
 
@@ -348,7 +399,9 @@ export function EstimateForm({
             ? prev.map((line, i) => (i === blank ? { ...created, uid: line.uid } : line))
             : [...prev, created];
       }
-      return sortByPanelOrder(withHagel(next));
+      const result = sortByPanelOrder(withHagel(next));
+      queuePersist(result, true);
+      return result;
     });
     setEditingPanel(null);
     setPanelDraft(null);
@@ -357,7 +410,9 @@ export function EstimateForm({
   function removePanel(panel: string) {
     setLines((prev) => {
       const next = prev.filter((line) => line.panel !== panel);
-      return withHagel(next.length ? next : [makeLine()]);
+      const result = withHagel(next.length ? next : [makeLine()]);
+      queuePersist(result, true);
+      return result;
     });
     setEditingPanel(null);
     setPanelDraft(null);
@@ -394,55 +449,146 @@ export function EstimateForm({
     setDropIndex(null);
   }
 
-  async function onSubmit(status?: string) {
-    if (!clientId || !vehicleId) {
-      setError("Sélectionnez un client et un véhicule");
-      return;
-    }
-    if (lines.some((l) => !l.panel)) {
-      setError("Chaque ligne doit avoir une pièce");
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    const form = document.getElementById("estimate-form") as HTMLFormElement;
+  function buildPayload(nextLines: Line[], status?: string) {
+    const ctx = persistCtx.current;
+    if (!ctx.clientId || !ctx.vehicleId) return null;
+    const form = document.getElementById("estimate-form") as HTMLFormElement | null;
+    if (!form) return null;
+    const usable = sortByPanelOrder(withHagel(nextLines)).filter((line) => line.panel);
+    if (!usable.length) return null;
     const fd = new FormData(form);
-    const payload = {
+    return {
       date: fd.get("date"),
       damageDate: fd.get("damageDate") || null,
-      clientId,
-      vehicleId,
-      estimatorId,
-      status: status || fd.get("status") || "DRAFT",
+      clientId: ctx.clientId,
+      vehicleId: ctx.vehicleId,
+      estimatorId: ctx.estimatorId,
+      status: status || String(fd.get("status") || "DRAFT"),
       discountType: "PERCENT",
       discountValue: 0,
-      taxRate: vat,
+      taxRate: ctx.vat,
       internalNotes: fd.get("internalNotes"),
       clientNotes: fd.get("clientNotes"),
       includePhotos: fd.get("includePhotos") === "on",
-      dismantlingAmount,
-      applyVehiclePrep: Boolean(vehicleExtras.preparation),
-      applyVehicleFinish: Boolean(vehicleExtras.finish),
-      servicePricing,
-      lineItems: sortByPanelOrder(withHagel(lines)).map(({ uid: _uid, ...line }, i) => ({
+      dismantlingAmount: ctx.dismantlingAmount,
+      applyVehiclePrep: Boolean(ctx.vehicleExtras.preparation),
+      applyVehicleFinish: Boolean(ctx.vehicleExtras.finish),
+      servicePricing: ctx.servicePricing,
+      lineItems: usable.map(({ uid: _uid, ...line }, i) => ({
         ...line,
         pricingMode: "HOURLY",
         fixedAmount: 0,
         sortOrder: i,
       })),
     };
-    const res = await fetch(id ? `/api/estimates/${id}` : "/api/estimates", {
-      method: id ? "PATCH" : "POST",
+  }
+
+  function queuePersist(nextLines: Line[], immediate: boolean) {
+    if (persistTimer.current) {
+      clearTimeout(persistTimer.current);
+      persistTimer.current = null;
+    }
+    if (immediate) {
+      void persistEstimate(nextLines);
+      return;
+    }
+    persistTimer.current = setTimeout(() => {
+      persistTimer.current = null;
+      void persistEstimate(nextLines);
+    }, 400);
+  }
+
+  async function persistEstimate(nextLines: Line[]) {
+    if (persistSkip.current) return;
+    if (persistBusy.current) {
+      persistQueued.current = nextLines;
+      return;
+    }
+    persistBusy.current = true;
+    persistQueued.current = null;
+    const payload = buildPayload(nextLines);
+    if (!payload) {
+      persistBusy.current = false;
+      return;
+    }
+    setSaveHint("Enregistrement…");
+    const currentId = estimateIdRef.current;
+    if (persistSkip.current) {
+      persistBusy.current = false;
+      return;
+    }
+    try {
+      const res = await fetch(currentId ? `/api/estimates/${currentId}` : "/api/estimates", {
+        method: currentId ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setSaveHint(null);
+        setError(data.error || "Enregistrement automatique impossible");
+        return;
+      }
+      const savedId = String(data.id ?? currentId ?? "");
+      if (savedId && !currentId) {
+        estimateIdRef.current = savedId;
+        rememberEstimateView(savedId, "edit");
+        router.replace(`/estimates/${savedId}/edit`);
+      }
+      setError(null);
+      setSaveHint("Enregistré");
+    } catch {
+      setSaveHint(null);
+      setError("Enregistrement automatique impossible");
+    } finally {
+      persistBusy.current = false;
+      const queued = persistQueued.current;
+      persistQueued.current = null;
+      if (queued) void persistEstimate(queued);
+    }
+  }
+
+  async function onSubmit(status?: string) {
+    persistSkip.current = true;
+    if (persistTimer.current) {
+      clearTimeout(persistTimer.current);
+      persistTimer.current = null;
+    }
+    persistQueued.current = null;
+    if (!clientId || !vehicleId) {
+      persistSkip.current = false;
+      setError("Sélectionnez un client et un véhicule");
+      return;
+    }
+    if (lines.some((l) => !l.panel)) {
+      persistSkip.current = false;
+      setError("Chaque ligne doit avoir une pièce");
+      return;
+    }
+    const payload = buildPayload(lines, status);
+    if (!payload) {
+      persistSkip.current = false;
+      setError("Enregistrement impossible");
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    const currentId = estimateIdRef.current;
+    const res = await fetch(currentId ? `/api/estimates/${currentId}` : "/api/estimates", {
+      method: currentId ? "PATCH" : "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
     const data = await res.json().catch(() => ({}));
     setLoading(false);
     if (!res.ok) {
+      persistSkip.current = false;
       setError(data.error || "Enregistrement impossible");
       return;
     }
-    router.push(`/estimates/${data.id ?? id}`);
+    const savedId = String(data.id ?? currentId ?? "");
+    if (savedId) rememberEstimateView(savedId, "view");
+    router.push(`/estimates/${savedId}`);
     router.refresh();
   }
 
@@ -947,7 +1093,7 @@ export function EstimateForm({
       </div>
 
       <ErrorText message={error} />
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Button type="submit" disabled={loading}>
           {loading ? "Enregistrement…" : "Enregistrer"}
         </Button>
@@ -957,6 +1103,7 @@ export function EstimateForm({
         <Button type="button" variant="ghost" onClick={() => router.back()}>
           Annuler
         </Button>
+        {saveHint ? <span className="text-sm text-slate-500">{saveHint}</span> : null}
       </div>
     </form>
       {panelDraft && editingPanel ? (

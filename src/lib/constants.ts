@@ -72,36 +72,70 @@ export function resolveCarDiagram(_value?: string | null): CarDiagram {
   return "exploded";
 }
 
-/** Capot, côté gauche (avant → arrière), côté droit (avant → arrière), coffre. */
+/**
+ * Centre (capot, pavillon, hayons) puis gauche puis droite.
+ * Les montants / custodes / pare-chocs restent collés à leur zone.
+ */
 export const DEFAULT_PANELS = [
-  "Pare-chocs avant",
   "Capot",
   "Toit",
+  "Coffre supérieur",
+  "Coffre inférieur",
+  "Pare-chocs avant",
   "Aile avant gauche",
   "Montant A gauche",
   "Portière avant gauche",
+  "Portière arrière gauche",
   "Bas de caisse gauche",
   "Montant B gauche",
-  "Portière arrière gauche",
   "Custode gauche",
   "Aile arrière gauche",
   "Aile avant droite",
   "Montant A droite",
   "Portière avant droite",
+  "Portière arrière droite",
   "Bas de caisse droit",
   "Montant B droite",
-  "Portière arrière droite",
   "Custode droite",
   "Aile arrière droite",
-  "Coffre supérieur",
-  "Coffre inférieur",
   "Pare-chocs arrière",
 ];
 
+export function foldPanelName(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .replace(/portiere/g, "porte")
+    .replace(/\bpavillon\b/g, "toit")
+    .replace(/\bhayon superieur\b/g, "coffre superieur")
+    .replace(/\bhayon inferieur\b/g, "coffre inferieur")
+    .replace(/\bdroite\b/g, "droit")
+    .replace(/\bmontant gauche\b/g, "montant a gauche")
+    .replace(/\bmontant droit\b/g, "montant a droit")
+    .replace(/[-_/]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+const PANEL_SORT_KEYS = DEFAULT_PANELS.map(foldPanelName);
+
+export function catalogPanelName(panel: string): string | null {
+  if (!panel) return null;
+  if (DEFAULT_PANELS.includes(panel)) return panel;
+  const idx = PANEL_SORT_KEYS.indexOf(foldPanelName(panel));
+  return idx >= 0 ? DEFAULT_PANELS[idx] : null;
+}
+
+export function isMontantPanel(panel: string) {
+  return /(^|\s)montant(\s|$)/i.test(foldPanelName(panel));
+}
+
 export function panelSortIndex(panel: string) {
   if (!panel) return DEFAULT_PANELS.length + 1;
-  const index = DEFAULT_PANELS.indexOf(panel);
-  return index === -1 ? DEFAULT_PANELS.length : index;
+  const mapped = catalogPanelName(panel);
+  if (mapped) return DEFAULT_PANELS.indexOf(mapped);
+  return DEFAULT_PANELS.length;
 }
 
 export function sortByPanelOrder<T extends { panel: string }>(items: T[]): T[] {

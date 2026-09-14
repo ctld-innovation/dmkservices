@@ -1,13 +1,11 @@
 import { prisma } from "@/lib/prisma";
-import { DEFAULT_PANELS } from "@/lib/constants";
+import { catalogPanelName, DEFAULT_PANELS } from "@/lib/constants";
 
 const OLD_HATCH = "Coffre / hayon";
 const UPPER_HATCH = "Coffre supérieur";
 
 function catalogKey(item: { label: string; value: string }) {
-  if (DEFAULT_PANELS.includes(item.label)) return item.label;
-  if (DEFAULT_PANELS.includes(item.value)) return item.value;
-  return null;
+  return catalogPanelName(item.label) ?? catalogPanelName(item.value);
 }
 
 export async function syncPanelLookups() {
